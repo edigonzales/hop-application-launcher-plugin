@@ -14,10 +14,12 @@ import org.apache.hop.core.Const;
 import org.apache.hop.core.HopEnvironment;
 import org.apache.hop.core.config.HopConfig;
 import org.apache.hop.core.gui.plugin.GuiPluginType;
+import org.apache.hop.core.logging.*;
 import org.apache.hop.core.plugins.PluginRegistry;
 import org.apache.hop.ui.hopgui.HopGuiEnvironment;
 import org.apache.hop.ui.hopgui.perspective.*;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.graphics.*;
 import org.eclipse.swt.layout.FormLayout;
 import org.eclipse.swt.widgets.*;
@@ -85,16 +87,28 @@ class InstalledLauncherTest {
       perspective.perspectiveActivated();
       Composite content = (Composite) perspective.getControl();
       waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
-      assertEquals(3, findApps(content).getItemCount());
+      assertEquals(4, findApps(content).getItemCount());
+      assertTrue(findButton(content, "OpenOutput").getVisible());
+      assertFalse(findButton(content, "OpenOutput").getEnabled());
       fill(content, "INPUT_XML", input.toString());
       fill(content, "OUTPUT_DIR", output.toString());
       click(content, "Start");
       waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
       assertCsv(output, input);
+      assertTrue(logText(content).getText().contains("Write CSV"));
+      assertTrue(logText(content).getText().contains("demo.hello-world: SUCCESS"));
+      assertTrue(findButton(content, "OpenOutput").getEnabled());
+      assertEquals(
+          output.toRealPath().toString(), findButton(content, "OpenOutput").getToolTipText());
+      fill(content, "OUTPUT_DIR", output.resolve("not-the-last-run").toString());
+      assertEquals(
+          output.toRealPath().toString(), findButton(content, "OpenOutput").getToolTipText());
+      fill(content, "OUTPUT_DIR", output.toString());
       Files.writeString(output.resolve("hello-world.csv"), "THIS MUST BE REPLACED\n");
       click(content, "Start");
       waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
       assertCsv(output, input);
+      assertEquals(1, logText(content).getText().split("Starting demo.hello-world", -1).length - 1);
       // Selecting a workflow uses the same form, with parameters forwarded to its child pipeline.
       var list = findApps(content);
       list.select(1);
@@ -105,6 +119,9 @@ class InstalledLauncherTest {
       click(content, "Start");
       waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
       assertCsv(output, input);
+      assertTrue(
+          logText(content).getText().contains("Write CSV"), "Workflow children must be visible");
+      assertFalse(logText(content).getText().contains("Starting demo.hello-world"));
       Image screenshot =
           new Image(display, shell.getClientArea().width, shell.getClientArea().height);
       GC gc = new GC(shell);
@@ -130,6 +147,33 @@ class InstalledLauncherTest {
       assertTrue(
           allReports().stream().anyMatch(p -> "CANCELLED".equals(p.getProperty("status"))),
           "Cancellation must be recorded");
+      verifyLogAndOutputControls(display, perspective, content);
+      // Closing the view during execution cancels, but keeps logs until persistence finishes.
+      list.select(2);
+      list.notifyListeners(SWT.Selection, new Event());
+      fill(content, "INPUT_XML", input.toString());
+      fill(content, "OUTPUT_DIR", output.toString());
+      click(content, "Start");
+      waitUi(
+          display,
+          () -> logText(content).getText().contains("Starting demo.delay"),
+          Duration.ofSeconds(4));
+      String closingChannel = currentLog(perspective).getLogChannelId();
+      content.dispose();
+      waitUi(
+          display,
+          () -> !LoggingRegistry.getInstance().getMap().containsKey(closingChannel),
+          Duration.ofSeconds(30));
+      waitUi(
+          display,
+          () ->
+              Thread.getAllStackTraces().keySet().stream()
+                  .noneMatch(
+                      t ->
+                          t.isAlive()
+                              && (t.getName().equals("log sniffer Timer")
+                                  || t.getName().equals("hop-application-launcher"))),
+          Duration.ofSeconds(10));
       // Preserve active Hop project state; launcher does not switch projects or set global
       // PROJECT_HOME.
       assertNull(System.getProperty("PROJECT_HOME"));
@@ -291,14 +335,178 @@ class InstalledLauncherTest {
                 "<hop><from>Delay</from><to>Hello World</to><enabled>Y</enabled></hop></order>")
             .replace(
                 "</pipeline>",
-                "<transform><name>Delay</name><type>Delay</type><copies>1</copies><timeout>5</timeout><scaletime>seconds</scaletime></transform></pipeline>");
+                "<transform><name>Delay</name><type>Delay</type><copies>1</copies><timeout>10</timeout><scaletime>seconds</scaletime></transform></pipeline>");
     Files.writeString(source.resolve("demo/delay.hpl"), xml);
+    Files.writeString(
+        source.resolve("demo/no-output.launcher.yaml"),
+        Files.readString(source.resolve("demo/hello-world.launcher.yaml"))
+            .replace("outputDirectoryParameter: OUTPUT_DIR\n", ""));
     Files.writeString(
         source.resolve("shared/hop/applications.yaml"),
         "  - id: demo.delay\n"
             + "    entrypoint: demo/delay.hpl\n"
-            + "    sidecar: demo/hello-world.launcher.yaml\n",
+            + "    sidecar: demo/hello-world.launcher.yaml\n"
+            + "  - id: demo.no-output\n"
+            + "    entrypoint: demo/hello-world.hpl\n"
+            + "    sidecar: demo/no-output.launcher.yaml\n",
         StandardOpenOption.APPEND);
+  }
+
+  private void verifyLogAndOutputControls(
+      Display display, IHopPerspective perspective, Composite content) throws Exception {
+    var list = findApps(content);
+    list.select(3);
+    list.notifyListeners(SWT.Selection, new Event());
+    assertFalse(findButton(content, "OpenOutput").getVisible());
+    assertTrue(
+        ((org.eclipse.swt.layout.RowData) findButton(content, "OpenOutput").getLayoutData())
+            .exclude);
+    fill(content, "INPUT_XML", input.toString());
+    fill(content, "OUTPUT_DIR", output.toString());
+    click(content, "Start");
+    waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
+    assertFalse(findButton(content, "OpenOutput").getVisible());
+    assertFalse(findButton(content, "OpenOutput").getEnabled());
+
+    list.select(2);
+    list.notifyListeners(SWT.Selection, new Event());
+    assertTrue(findButton(content, "OpenOutput").getVisible());
+    assertFalse(findButton(content, "OpenOutput").getEnabled());
+    fill(content, "INPUT_XML", input.toString());
+    fill(content, "OUTPUT_DIR", output.toString());
+    click(content, "Start");
+    waitUi(
+        display,
+        () -> logText(content).getText().contains("Starting demo.delay"),
+        Duration.ofSeconds(4));
+    assertFalse(findButton(content, "Start").getEnabled(), "Log must appear before the run ends");
+    ILogChannel runChannel = currentLog(perspective);
+    new LogChannel("Unrelated execution").logBasic("FOREIGN_LOG_SENTINEL");
+    runChannel.logBasic("BEFORE_CLEAR_SENTINEL");
+    waitUi(
+        display,
+        () -> logText(content).getText().contains("BEFORE_CLEAR_SENTINEL"),
+        Duration.ofSeconds(3));
+    assertFalse(logText(content).getText().contains("FOREIGN_LOG_SENTINEL"));
+    Button pause = findButton(content, "PauseLog");
+    pause.setSelection(true);
+    click(content, "PauseLog");
+    String paused = logText(content).getText();
+    runChannel.logBasic("AFTER_PAUSE_SENTINEL");
+    pump(display, 1100);
+    assertEquals(paused, logText(content).getText());
+    pause.setSelection(false);
+    click(content, "PauseLog");
+    assertTrue(logText(content).getText().contains("AFTER_PAUSE_SENTINEL"));
+    Text filter =
+        (Text)
+            controls(content).stream()
+                .filter(c -> Boolean.TRUE.equals(c.getData("launcher.log.filter")))
+                .findFirst()
+                .orElseThrow();
+    filter.setText("AFTER_PAUSE_SENTINEL");
+    assertTrue(logText(content).getText().contains("AFTER_PAUSE_SENTINEL"));
+    assertFalse(logText(content).getText().contains("BEFORE_CLEAR_SENTINEL"));
+    findButton(content, "HighlightLog").setSelection(true);
+    click(content, "HighlightLog");
+    assertTrue(logText(content).getText().contains("BEFORE_CLEAR_SENTINEL"));
+    findButton(content, "HighlightLog").setSelection(false);
+    click(content, "HighlightLog");
+    findButton(content, "ExcludeLog").setSelection(true);
+    click(content, "ExcludeLog");
+    assertFalse(logText(content).getText().contains("AFTER_PAUSE_SENTINEL"));
+    assertTrue(logText(content).getText().contains("BEFORE_CLEAR_SENTINEL"));
+    findButton(content, "ExcludeLog").setSelection(false);
+    click(content, "ExcludeLog");
+    filter.setText("after_pause_sentinel");
+    findButton(content, "MatchCaseLog").setSelection(true);
+    click(content, "MatchCaseLog");
+    assertTrue(logText(content).getText().isBlank());
+    findButton(content, "MatchCaseLog").setSelection(false);
+    click(content, "MatchCaseLog");
+    assertTrue(logText(content).getText().contains("AFTER_PAUSE_SENTINEL"));
+    filter.setText("");
+    click(content, "LargerLog");
+    click(content, "SmallerLog");
+    click(content, "ResetLogFont");
+    click(content, "ClearLog");
+    assertTrue(logText(content).getText().isBlank());
+    runChannel.logError("AFTER_CLEAR_ERROR");
+    waitUi(
+        display,
+        () -> logText(content).getText().contains("AFTER_CLEAR_ERROR"),
+        Duration.ofSeconds(3));
+    assertFalse(logText(content).getText().contains("BEFORE_CLEAR_SENTINEL"));
+    assertTrue(logText(content).getStyleRanges().length > 0, "Native error highlighting");
+    // Hiding and reactivating the perspective must not cancel or restart its engine.
+    content.setVisible(false);
+    perspective.perspectiveActivated();
+    pump(display, 100);
+    content.setVisible(true);
+    waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
+    assertTrue(logText(content).getText().contains("demo.delay: SUCCESS"));
+    assertTrue(findButton(content, "OpenOutput").getEnabled());
+    Path saved =
+        Path.of(
+            controls(content).stream()
+                .filter(c -> Boolean.TRUE.equals(c.getData("launcher.logFile")))
+                .findFirst()
+                .orElseThrow()
+                .getToolTipText());
+    String diskLog = Files.readString(saved);
+    assertTrue(diskLog.contains("BEFORE_CLEAR_SENTINEL"));
+    assertTrue(diskLog.contains("AFTER_PAUSE_SENTINEL"));
+    assertTrue(diskLog.contains("AFTER_CLEAR_ERROR"));
+    assertFalse(diskLog.contains("FOREIGN_LOG_SENTINEL"));
+
+    // Validation error before creating an engine is rendered and leaves the output button disabled.
+    fill(content, "INPUT_XML", input.resolveSibling("missing.xml").toString());
+    click(content, "Start");
+    waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
+    assertTrue(logText(content).getText().contains("missing.xml"));
+    assertFalse(findButton(content, "OpenOutput").getEnabled());
+    assertFalse(logText(content).getText().contains("AFTER_CLEAR_ERROR"));
+
+    // Engine failure still exposes the validated output directory.
+    list.select(0);
+    list.notifyListeners(SWT.Selection, new Event());
+    fill(content, "INPUT_XML", input.toString());
+    fill(content, "OUTPUT_DIR", output.toString());
+    Files.deleteIfExists(output.resolve("hello-world.csv"));
+    Files.createDirectories(output.resolve("hello-world.csv"));
+    Files.writeString(output.resolve("hello-world.csv/keep"), "keep");
+    click(content, "Start");
+    waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
+    assertTrue(logText(content).getText().contains("demo.hello-world: FAILED"));
+    assertTrue(findButton(content, "OpenOutput").getEnabled());
+    Files.delete(output.resolve("hello-world.csv/keep"));
+    Files.delete(output.resolve("hello-world.csv"));
+    click(content, "Refresh");
+    assertFalse(findButton(content, "OpenOutput").getVisible());
+    waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
+    assertFalse(findButton(content, "OpenOutput").getEnabled());
+  }
+
+  private static StyledText logText(Composite content) {
+    return (StyledText)
+        controls(content).stream()
+            .filter(c -> Boolean.TRUE.equals(c.getData("launcher.log")))
+            .findFirst()
+            .orElseThrow();
+  }
+
+  private static ILogChannel currentLog(Object perspective) throws Exception {
+    Field panelField = perspective.getClass().getDeclaredField("log");
+    panelField.setAccessible(true);
+    Object panel = panelField.get(perspective);
+    Field sessionField = panel.getClass().getDeclaredField("session");
+    sessionField.setAccessible(true);
+    return ((IHasLogChannel) sessionField.get(panel)).getLogChannel();
+  }
+
+  private static void pump(Display display, long millis) throws Exception {
+    long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis);
+    waitUi(display, () -> System.nanoTime() >= until, Duration.ofMillis(millis + 1000));
   }
 
   private static void assertCsv(Path folder, Path input) throws Exception {

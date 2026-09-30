@@ -30,3 +30,10 @@ from there. It never commits, pulls or pushes the source themes repository. Inpu
 Results are under `integration-tests/target/installed-e2e/`: UI screenshot, pilot CSV and run reports.
 The scenarios cover clone, forms, parameter forwarding, CSV replacement and quoting, cancellation,
 engine failures, invalid files and update exclusion during a running application.
+
+Logging checks cover native live rendering before completion, workflow child logs, error colours,
+pause/resume, filtering/highlighting/case/exclusion, clearing and successive run isolation. They
+check that the persisted log retains messages removed from the view and excludes unrelated Hop logs.
+The output action is tested with and without sidecar output metadata, after validation and engine
+failures, and when changing applications or refreshing. Closing an active view must cancel the engine,
+persist its log and stop the native log timer; hiding/reactivating the view must preserve the run.

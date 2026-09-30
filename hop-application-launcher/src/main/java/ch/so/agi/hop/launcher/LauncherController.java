@@ -38,6 +38,7 @@ public final class LauncherController {
 
   public ExecutionService.Outcome run(String application, Map<String, String> parameters, Path logs)
       throws Exception {
+    var current = Objects.requireNonNull(execution, "prepareRun must be called before run");
     try (var lease = new ManagedRepository(settings).lock()) {
       String revision = lease.revision();
       if (!Objects.equals(revision, validatedRevision))
@@ -50,16 +51,21 @@ public final class LauncherController {
                   .findFirst()
                   .orElseThrow(
                       () -> new IllegalArgumentException("Application not found: " + application));
-      return execution.run(lease.root(), revision, app, parameters, logs);
+      return current.run(lease.root(), revision, app, parameters, logs);
+    } catch (Exception | LinkageError e) {
+      current.log().getLogChannel().logError(e.toString(), e);
+      throw e;
     } finally {
+      current.log().complete();
       execution = null;
     }
   }
 
   /** Called on the UI thread before queuing the worker so even an immediate cancel is retained. */
-  public void prepareRun() {
+  public RunLog prepareRun() {
     if (execution != null) throw new IllegalStateException("A run is already active");
     execution = new ExecutionService();
+    return execution.log();
   }
 
   public void cancel() {

@@ -8,6 +8,7 @@ A generic Apache Hop desktop perspective for running Git-managed applications wi
 - File, directory, string, choice and boolean fields; German and English UI.
 - Managed Git checkout, fast-forward updates and explicit offline operation.
 - Local execution, cancellation and revision-linked run reports.
+- Native Hop live logs with filtering and a contextual output-directory action.
 
 ## Requirements
 

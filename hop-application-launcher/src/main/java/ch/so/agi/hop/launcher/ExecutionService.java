@@ -6,7 +6,6 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.hop.core.Result;
-import org.apache.hop.core.logging.HopLogStore;
 import org.apache.hop.core.parameters.INamedParameters;
 import org.apache.hop.pipeline.PipelineMeta;
 import org.apache.hop.pipeline.config.PipelineRunConfiguration;
@@ -20,8 +19,13 @@ public final class ExecutionService {
   public record Outcome(String status, Path report, Path log, String outputDirectory) {}
 
   private final AtomicBoolean cancelled = new AtomicBoolean();
+  private final RunLog runLog = new RunLog();
   private volatile IPipelineEngine<PipelineMeta> pipeline;
   private volatile IWorkflowEngine<WorkflowMeta> workflow;
+
+  public RunLog log() {
+    return runLog;
+  }
 
   public void cancel() {
     cancelled.set(true);
@@ -34,7 +38,7 @@ public final class ExecutionService {
     Path folder = logs.resolve(start.toString().replace(':', '-') + "-" + UUID.randomUUID());
     Files.createDirectories(folder);
     Path report = folder.resolve("run.properties"), log = folder.resolve("hop.log");
-    String status = "FAILED", channel = null, output = "", error = "";
+    String status = "FAILED", output = "", error = "";
     // Engines may reset their stop flag during initialization. Reassert cancellation from a
     // worker until execution ends; never stop transforms on the SWT event thread.
     ScheduledExecutorService cancellation =
@@ -57,6 +61,7 @@ public final class ExecutionService {
         50,
         TimeUnit.MILLISECONDS);
     try {
+      runLog.getLogChannel().logBasic("Starting " + app.id());
       var validated = ParameterValidator.validate(app, values, root);
       output = validated.getOrDefault(app.outputDirectoryParameter(), "");
       HopRuntimeContext context = new HopRuntimeContext(root);
@@ -73,7 +78,7 @@ public final class ExecutionService {
         pipeline =
             PipelineEngineFactory.createPipelineEngine(
                 context.variables, "launcher-local", context.metadata, pm);
-        channel = pipeline.getLogChannelId();
+        pipeline.setParent(runLog.parent());
         setParameters(pipeline, validated);
         if (!cancelled.get()) {
           pipeline.prepareExecution();
@@ -94,8 +99,11 @@ public final class ExecutionService {
               "launcher-local must be a local workflow configuration");
         workflow =
             WorkflowEngineFactory.createWorkflowEngine(
-                context.variables, "launcher-local", context.metadata, (WorkflowMeta) meta, null);
-        channel = workflow.getLogChannelId();
+                context.variables,
+                "launcher-local",
+                context.metadata,
+                (WorkflowMeta) meta,
+                runLog.parent());
         setParameters(workflow, validated);
         result = cancelled.get() ? new Result() : workflow.startExecution();
       }
@@ -107,28 +115,33 @@ public final class ExecutionService {
                   : "FAILED";
     } catch (Exception | LinkageError e) {
       error = e.toString();
+      runLog.getLogChannel().logError(error, e);
       if (cancelled.get()) status = "CANCELLED";
 
     } finally {
       cancellation.shutdownNow();
-      if (workflow != null) channel = workflow.getLogChannelId();
-      if (pipeline != null) channel = pipeline.getLogChannelId();
-      String buffer =
-          channel == null ? "" : HopLogStore.getAppender().getBuffer(channel, false).toString();
-      Files.writeString(log, buffer + (error.isEmpty() ? "" : "\n" + error + "\n"));
-      Properties props = new Properties();
-      props.setProperty("application", app.id());
-      props.setProperty("revision", revision);
-      props.setProperty("start", start.toString());
-      props.setProperty("end", Instant.now().toString());
-      props.setProperty("status", status);
-      props.setProperty("error", error);
-      try (var writer = Files.newBufferedWriter(report)) {
-        props.store(writer, "Hop Application Launcher");
+      runLog.getLogChannel().logBasic(app.id() + ": " + status);
+      try {
+        Files.writeString(log, runLog.text());
+        Properties props = new Properties();
+        props.setProperty("application", app.id());
+        props.setProperty("revision", revision);
+        props.setProperty("start", start.toString());
+        props.setProperty("end", Instant.now().toString());
+        props.setProperty("status", status);
+        props.setProperty("error", error);
+        try (var writer = Files.newBufferedWriter(report)) {
+          props.store(writer, "Hop Application Launcher");
+        }
+      } finally {
+        try {
+          if (pipeline != null) pipeline.cleanup();
+        } finally {
+          pipeline = null;
+          workflow = null;
+          runLog.complete();
+        }
       }
-      if (pipeline != null) pipeline.cleanup();
-      pipeline = null;
-      workflow = null;
     }
     return new Outcome(status, report, log, output);
   }

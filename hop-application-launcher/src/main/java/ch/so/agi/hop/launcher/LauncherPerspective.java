@@ -2,7 +2,6 @@ package ch.so.agi.hop.launcher;
 
 import static ch.so.agi.hop.launcher.ApplicationDefinition.*;
 
-import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
@@ -13,6 +12,7 @@ import org.apache.hop.ui.hopgui.HopGui;
 import org.apache.hop.ui.hopgui.context.IGuiContextHandler;
 import org.apache.hop.ui.hopgui.perspective.*;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.SWTException;
 import org.eclipse.swt.custom.*;
 import org.eclipse.swt.layout.*;
 import org.eclipse.swt.program.Program;
@@ -28,11 +28,15 @@ import org.eclipse.swt.widgets.*;
     documentationUrl = "https://edigonzales.github.io/hop-application-launcher-plugin/")
 public final class LauncherPerspective implements IHopPerspective {
   private HopGui hopGui;
+  private Display display;
   private Composite control, form;
   private ScrolledComposite scroll;
   private org.eclipse.swt.widgets.List apps;
   private Label description, status, revision;
-  private Text log;
+  private LauncherLogPanel log;
+  private SashForm vertical;
+  private Link logFile;
+  private String savedLog = "";
   private Button refresh, settingsButton, start, cancel, open, offline;
   private final Map<String, Supplier<String>> fields = new LinkedHashMap<>();
   private java.util.List<ApplicationDefinition> definitions = java.util.List.of();
@@ -89,6 +93,7 @@ public final class LauncherPerspective implements IHopPerspective {
   @Override
   public void initialize(HopGui gui, Composite parent) {
     hopGui = gui;
+    display = parent.getDisplay();
     settings = LauncherSettings.load();
     controller = new LauncherController(settings);
     control = new Composite(parent, SWT.NONE);
@@ -108,7 +113,11 @@ public final class LauncherPerspective implements IHopPerspective {
     offline.setEnabled(false);
     revision = new Label(control, SWT.WRAP);
     revision.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-    SashForm panels = new SashForm(control, SWT.HORIZONTAL);
+    vertical = new SashForm(control, SWT.VERTICAL);
+    vertical.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+    Composite applicationArea = new Composite(vertical, SWT.NONE);
+    applicationArea.setLayout(new GridLayout(1, false));
+    SashForm panels = new SashForm(applicationArea, SWT.HORIZONTAL);
     panels.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
     apps = new org.eclipse.swt.widgets.List(panels, SWT.BORDER | SWT.V_SCROLL);
     apps.setData("launcher.apps", true);
@@ -146,35 +155,22 @@ public final class LauncherPerspective implements IHopPerspective {
     cancel.setEnabled(false);
     open.setEnabled(false);
     panels.setWeights(30, 70);
-    status = new Label(control, SWT.WRAP);
+    status = new Label(applicationArea, SWT.WRAP);
     status.setData("launcher.status", true);
     status.setText(message("Ready"));
     status.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-    ExpandBar details = new ExpandBar(control, SWT.NONE);
-    details.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false));
-    log = new Text(details, SWT.MULTI | SWT.READ_ONLY | SWT.BORDER | SWT.V_SCROLL | SWT.H_SCROLL);
-    ExpandItem item = new ExpandItem(details, SWT.NONE);
-    item.setText(message("Log"));
-    item.setControl(log);
-    item.setHeight(180);
-    details.addListener(
-        SWT.Expand,
-        e ->
-            control
-                .getDisplay()
-                .asyncExec(
-                    () -> {
-                      if (!control.isDisposed()) control.layout(true, true);
-                    }));
-    details.addListener(
-        SWT.Collapse,
-        e ->
-            control
-                .getDisplay()
-                .asyncExec(
-                    () -> {
-                      if (!control.isDisposed()) control.layout(true, true);
-                    }));
+    logFile = new Link(applicationArea, SWT.NONE);
+    logFile.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+    logFile.setData("launcher.logFile", true);
+    logFile.addListener(
+        SWT.Selection,
+        e -> {
+          if (!savedLog.isEmpty() && !Program.launch(savedLog))
+            showError(new IllegalStateException(message("CannotOpenLog")));
+        });
+    log = new LauncherLogPanel(vertical);
+    vertical.setWeights(65, 35);
+    vertical.setMaximizedControl(applicationArea);
     apps.addListener(SWT.Selection, e -> selectApplication(apps.getSelectionIndex()));
     control.addListener(
         SWT.Dispose,
@@ -193,12 +189,16 @@ public final class LauncherPerspective implements IHopPerspective {
   }
 
   private void ui(Runnable action) {
-    Display display = control.getDisplay();
-    if (!display.isDisposed())
-      display.asyncExec(
-          () -> {
-            if (!control.isDisposed()) action.run();
-          });
+    if (!display.isDisposed()) {
+      try {
+        display.asyncExec(
+            () -> {
+              if (!control.isDisposed()) action.run();
+            });
+      } catch (SWTException e) {
+        if (e.code != SWT.ERROR_DEVICE_DISPOSED) throw e;
+      }
+    }
   }
 
   private void busy(boolean value, boolean running) {
@@ -211,13 +211,16 @@ public final class LauncherPerspective implements IHopPerspective {
     start.setEnabled(!value && selected != null);
     cancel.setEnabled(running);
     open.setEnabled(!value && !output.isEmpty());
+    open.setToolTipText(output.isEmpty() ? null : output);
   }
 
   private void refresh(boolean useOffline) {
     if (busy) return;
     busy(true, false);
     status.setText(message("Updating"));
-    log.setText("");
+    log.attach(null);
+    savedLog = "";
+    logFile.setText("");
     // A failed update must not leave an executable form from an older revision.
     definitions = java.util.List.of();
     apps.removeAll();
@@ -262,6 +265,12 @@ public final class LauncherPerspective implements IHopPerspective {
     output = "";
     open.setEnabled(false);
     selected = index < 0 ? null : definitions.get(index);
+    boolean hasOutput = selected != null && !selected.outputDirectoryParameter().isEmpty();
+    open.setVisible(hasOutput);
+    RowData outputLayout = new RowData();
+    outputLayout.exclude = !hasOutput;
+    open.setLayoutData(outputLayout);
+    open.getParent().layout(true, true);
     description.setText(selected == null ? "" : selected.title() + "\n" + selected.description());
     if (selected != null)
       for (Parameter p : selected.parameters()) {
@@ -325,23 +334,28 @@ public final class LauncherPerspective implements IHopPerspective {
     String id = selected.id();
     Map<String, String> values = new LinkedHashMap<>();
     fields.forEach((name, value) -> values.put(name, value.get()));
-    controller.prepareRun();
+    log.attach(controller.prepareRun());
+    vertical.setMaximizedControl(null);
     busy(true, true);
     status.setText(message("Running"));
-    log.setText("");
+    savedLog = "";
+    logFile.setText("");
     output = "";
     worker.submit(
         () -> {
           try {
             var result =
                 controller.run(id, values, LauncherSettings.stateDirectory().resolve("runs"));
-            String text = Files.readString(result.log());
             ui(
                 () -> {
                   output = result.outputDirectory();
                   busy(false, false);
                   status.setText(message(result.status()));
-                  log.setText(result.report() + "\n\n" + text);
+                  savedLog = result.log().toString();
+                  logFile.setText("<a>" + message("SavedLog") + "</a>");
+                  logFile.setToolTipText(savedLog);
+                  log.finish();
+                  control.layout(true, true);
                 });
           } catch (Exception | LinkageError e) {
             ui(
@@ -355,7 +369,8 @@ public final class LauncherPerspective implements IHopPerspective {
 
   private void showError(Throwable e) {
     status.setText(message("FAILED"));
-    log.setText(e.getMessage() == null ? e.toString() : e.getMessage());
+    vertical.setMaximizedControl(null);
+    log.error(e);
   }
 
   private void settingsDialog() {

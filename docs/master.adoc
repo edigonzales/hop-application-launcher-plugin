@@ -25,27 +25,57 @@ Anwendungen
 [Einstellungen] [Aktualisieren] [Lokalen Stand offline verwenden]
 Stand: 0123456789abcdef...
 +----------------------+-----------------------------------------------+
-| Hello World          | Hello World                                   |
-| Hello World workflow | Vorhandene hello-world.csv wird ersetzt.      |
-|                      |                                               |
-|                      | XML-Datei *      [ /daten/eingabe.xml ] [...] |
-|                      | Ausgabeordner *  [ /daten/ausgabe     ] [...] |
-|                      |                                               |
-|                      | [Starten] [Abbrechen] [Ausgabeordner öffnen]  |
+| Hello World          | Hello World                                  |
+| Hello World workflow | Vorhandene hello-world.csv wird ersetzt.     |
+|                      |                                              |
+|                      | XML-Datei *      [ /daten/eingabe.xml ] [...]|
+|                      | Ausgabeordner *  [ /daten/ausgabe     ] [...]|
+|                      |                                              |
+|                      | [Starten] [Abbrechen] [Ausgabeordner öffnen] |
 +----------------------+-----------------------------------------------+
 Erfolgreich abgeschlossen
-> Laufdetails und Protokoll
+[Gespeichertes Laufprotokoll öffnen]
+------------------- verschiebbare Trennlinie --------------------------
+[Logging]
+[Leeren] [Kopieren] [ ] Pause [Grösser] [Kleiner] [100%]
+Filtertext: [              ] [ ] Hervorheben [ ] Gross-/Kleinschreibung
+[ ] Ausschliessen
+2026/01/01 10:00:00 - Application Launcher - demo.hello-world: SUCCESS
 ----
 
-`[...]` steht für den beschrifteten Button «Durchsuchen…»; `>` steht für das aufklappbare
-Protokoll. Pflichtfelder tragen einen Stern. Dateiauswahl und Ordnerauswahl verwenden native
+`[...]` steht für den beschrifteten Button «Durchsuchen…». Pflichtfelder tragen einen Stern.
+Dateiauswahl und Ordnerauswahl verwenden native
 SWT-Dialoge. Während eines Laufs sind Anwendungsauswahl, Einstellungen und Aktualisierung
 gesperrt. Ein Perspektivenwechsel beendet die Ausführung nicht. «Abbrechen» fordert einen
 kontrollierten Stopp an und wartet auf die Engine; bereits erzeugte Dateien werden nicht zurückgerollt.
 
 Nach einem Netzwerkfehler ist «Lokalen Stand offline verwenden» verfügbar, wenn sich ein
 lokaler Checkout validieren lässt. Offline-Nutzung wird ausdrücklich gewählt und bleibt in
-der Standanzeige sichtbar. Fehlerdetails erscheinen im aufklappbaren Protokoll.
+der Standanzeige sichtbar. Fehlerdetails erscheinen im Logging-Bereich.
+
+=== Laufprotokoll und Ausgabeordner
+
+Der Logging-Bereich öffnet sich beim Start und bei Fehlern automatisch. Seine Höhe lässt sich
+über die Trennlinie verändern. Er verwendet Hops native Loganzeige mit Live-Aktualisierung,
+farbigen Fehlermeldungen und den Logs aufgerufener Unterpipelines. «Metrics» und «Problems»
+gehören weiterhin zur Editor-Oberfläche und werden hier nicht eingeblendet.
+
+«Pause» hält nur die Anzeige an; beim Fortsetzen werden die zwischenzeitlichen Meldungen
+nachgeladen. Nach Laufende wird die Anzeige automatisch fortgesetzt und abschliessend aktualisiert.
+Der Textfilter unterstützt Hervorheben, Gross-/Kleinschreibung und Ausschluss. «Leeren» entfernt
+die bisher sichtbaren Meldungen aus der Ansicht. «Kopieren» kopiert markierten Text oder, ohne
+Markierung, den gesamten sichtbaren Logtext. Schriftgrössenänderungen gelten nur für die Anzeige.
+Diese Bedienungen verändern weder die Ausführung noch das gespeicherte `hop.log`.
+
+Jeder Lauf hat einen eigenen Logkanal. Ein neuer Lauf setzt die Ansicht einschliesslich Filter
+und Pause zurück; andere Hop-Ausführungen erscheinen nicht im Launcher-Log. Das letzte Protokoll
+bleibt nach Erfolg, Fehler oder Abbruch lesbar. Der Link oberhalb des Logging-Bereichs öffnet die
+gespeicherte Logdatei. `run.properties` liegt daneben und enthält weiterhin die Laufmetadaten.
+
+«Ausgabeordner öffnen» erscheint ausschliesslich bei Anwendungen mit `outputDirectoryParameter`.
+Der Button ist vor und während eines Laufs deaktiviert. Nach Laufende öffnet er dessen validierten
+Ausgabeordner, auch nach einem Fehler oder Abbruch. Nachträgliche Formulareingaben ändern dieses
+Ziel nicht. Anwendungswechsel, Aktualisierung und ein neuer Lauf setzen das Ziel zurück.
 
 === Einstellungen
 
@@ -186,7 +216,8 @@ gelöscht; ihre Aufbewahrung kann betrieblich über dieses separate Verzeichnis 
 `CatalogLoader` validiert YAML und verbindet Formulare mit Hop-Parameterdefinitionen.
 `ManagedRepository` verwaltet Git und Sperren. `LauncherController` hält Katalogstand und
 Lauf zusammen. `ExecutionService` führt Hop im eigenen `HopRuntimeContext` aus.
-`LauncherPerspective` beschränkt sich auf SWT-Steuerelemente und asynchrone Bedienung.
+`RunLog` hält den stabilen Elternkanal eines Laufs; `LauncherLogPanel` bindet Hops native
+Loganzeige daran. `LauncherPerspective` beschränkt sich auf SWT-Steuerelemente und asynchrone Bedienung.
 
 Das Maven-Projekt verwendet den gemeinsamen `ch.so.agi:hop-plugin-parent` und das
 `desktop-plugin`-Profil aus `hop-plugin-ci`. Hop/SWT bleiben Host-Abhängigkeiten;
