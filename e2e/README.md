@@ -13,6 +13,9 @@ The runner installs the supplied ZIP into a temporary plugin tree and copies the
 transforms/actions from the supplied Hop home. It tests that installed tree with Hop core/UI libraries in a separate Maven test module that has no dependency on the
 launcher source module. The actual installed perspective is discovered, instantiated and operated through
 SWT. Both pipelines and workflows run with transforms/actions from the Hop distribution.
+Startup registers GUI plugins before perspectives and resolves the perspective with
+`PluginRegistry.getClass()` before requesting its classloader, matching `HopGui.loadPerspectives()`.
+This catches missing `@GuiPlugin` registration instead of accidentally initializing the loader in the test.
 
 For local pilot acceptance add:
 

@@ -13,6 +13,7 @@ import java.util.function.BooleanSupplier;
 import org.apache.hop.core.Const;
 import org.apache.hop.core.HopEnvironment;
 import org.apache.hop.core.config.HopConfig;
+import org.apache.hop.core.gui.plugin.GuiPluginType;
 import org.apache.hop.core.plugins.PluginRegistry;
 import org.apache.hop.ui.hopgui.HopGuiEnvironment;
 import org.apache.hop.ui.hopgui.perspective.*;
@@ -43,12 +44,15 @@ class InstalledLauncherTest {
         ClassNotFoundException.class,
         () -> Class.forName("ch.so.agi.hop.launcher.LauncherPerspective"));
     HopEnvironment.init();
-    HopGuiEnvironment.init(List.of(HopPerspectivePluginType.getInstance()));
+    HopGuiEnvironment.init(
+        List.of(GuiPluginType.getInstance(), HopPerspectivePluginType.getInstance()));
     var registry = PluginRegistry.getInstance();
     var plugin = registry.findPluginWithId(HopPerspectivePluginType.class, "application-launcher");
     assertNotNull(plugin, "Perspective must be discovered from the installed JAR index");
+    // Match HopGui.loadPerspectives(): getClass must work BEFORE getClassLoader.
+    // Requesting the loader first would hide a missing GUI-plugin registration.
+    Class<IHopPerspective> perspectiveType = registry.getClass(plugin, IHopPerspective.class);
     loader = registry.getClassLoader(plugin);
-    Class<?> perspectiveType = loader.loadClass("ch.so.agi.hop.launcher.LauncherPerspective");
     assertSame(loader, perspectiveType.getClassLoader());
     Path session = Files.createTempDirectory(work, "session-");
     source = session.resolve("source");

@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
+import org.apache.hop.core.gui.plugin.GuiPlugin;
 import org.apache.hop.i18n.BaseMessages;
 import org.apache.hop.ui.core.PropsUi;
 import org.apache.hop.ui.hopgui.HopGui;
@@ -17,6 +18,8 @@ import org.eclipse.swt.layout.*;
 import org.eclipse.swt.program.Program;
 import org.eclipse.swt.widgets.*;
 
+// Hop initializes GUI plugin loaders before resolving perspective classes via getClass().
+@GuiPlugin(name = "i18n::Launcher.Name", description = "i18n::Launcher.Description")
 @HopPerspectivePlugin(
     id = "application-launcher",
     name = "i18n::Launcher.Name",
