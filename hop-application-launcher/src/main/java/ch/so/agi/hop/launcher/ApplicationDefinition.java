@@ -5,6 +5,7 @@ import java.util.List;
 
 public record ApplicationDefinition(
     String id,
+    String organization,
     Path entrypoint,
     Path sidecar,
     String title,

@@ -31,7 +31,10 @@ public final class LauncherPerspective implements IHopPerspective {
   private Display display;
   private Composite control, form;
   private ScrolledComposite scroll;
-  private org.eclipse.swt.widgets.List apps;
+  private ApplicationTree apps;
+  private Composite updateBanner;
+  private Label updateMessage;
+  private ProgressBar updateProgress;
   private Label description, status, revision;
   private LauncherLogPanel log;
   private SashForm vertical;
@@ -111,6 +114,20 @@ public final class LauncherPerspective implements IHopPerspective {
     refresh = button(toolbar, "Refresh", () -> refresh(false));
     offline = button(toolbar, "Offline", () -> refresh(true));
     offline.setEnabled(false);
+    updateBanner = new Composite(control, SWT.NONE);
+    updateBanner.setLayout(new GridLayout(2, false));
+    GridData bannerLayout = new GridData(SWT.FILL, SWT.CENTER, true, false);
+    bannerLayout.exclude = true;
+    updateBanner.setLayoutData(bannerLayout);
+    updateBanner.setVisible(false);
+    updateProgress = new ProgressBar(updateBanner, SWT.INDETERMINATE | SWT.HORIZONTAL);
+    updateProgress.setData("launcher.updateProgress", true);
+    GridData progressLayout = new GridData(SWT.LEFT, SWT.CENTER, false, false);
+    progressLayout.widthHint = 90;
+    updateProgress.setLayoutData(progressLayout);
+    updateMessage = new Label(updateBanner, SWT.WRAP);
+    updateMessage.setData("launcher.updateMessage", true);
+    updateMessage.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
     revision = new Label(control, SWT.WRAP);
     revision.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
     vertical = new SashForm(control, SWT.VERTICAL);
@@ -119,8 +136,7 @@ public final class LauncherPerspective implements IHopPerspective {
     applicationArea.setLayout(new GridLayout(1, false));
     SashForm panels = new SashForm(applicationArea, SWT.HORIZONTAL);
     panels.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
-    apps = new org.eclipse.swt.widgets.List(panels, SWT.BORDER | SWT.V_SCROLL);
-    apps.setData("launcher.apps", true);
+    apps = new ApplicationTree(panels, this::selectApplication);
     Composite detail = new Composite(panels, SWT.NONE);
     detail.setLayout(new GridLayout(1, false));
     description = new Label(detail, SWT.WRAP);
@@ -171,7 +187,7 @@ public final class LauncherPerspective implements IHopPerspective {
     log = new LauncherLogPanel(vertical);
     vertical.setWeights(65, 35);
     vertical.setMaximizedControl(applicationArea);
-    apps.addListener(SWT.Selection, e -> selectApplication(apps.getSelectionIndex()));
+    selectApplication(null, "");
     control.addListener(
         SWT.Dispose,
         e -> {
@@ -217,14 +233,15 @@ public final class LauncherPerspective implements IHopPerspective {
   private void refresh(boolean useOffline) {
     if (busy) return;
     busy(true, false);
-    status.setText(message("Updating"));
+    showUpdate(message(useOffline ? "LoadingOffline" : "Updating"), true);
+    status.setText(message(useOffline ? "LoadingOffline" : "Updating"));
     log.attach(null);
     savedLog = "";
     logFile.setText("");
     // A failed update must not leave an executable form from an older revision.
     definitions = java.util.List.of();
-    apps.removeAll();
-    selectApplication(-1);
+    apps.clearForRefresh();
+    revision.setText("");
     worker.submit(
         () -> {
           try {
@@ -232,18 +249,12 @@ public final class LauncherPerspective implements IHopPerspective {
             ui(
                 () -> {
                   definitions = catalog.applications();
-                  apps.setItems(
-                      definitions.stream()
-                          .map(ApplicationDefinition::title)
-                          .toArray(String[]::new));
+                  apps.populate(definitions);
                   revision.setText(
                       (catalog.offline() ? message("OfflineState") : message("Revision"))
                           + " "
                           + catalog.revision());
-                  if (!definitions.isEmpty()) {
-                    apps.select(0);
-                    selectApplication(0);
-                  }
+                  showUpdate("", false);
                   busy(false, false);
                   status.setText(message(definitions.isEmpty() ? "Empty" : "Ready"));
                   control.layout(true, true);
@@ -252,6 +263,7 @@ public final class LauncherPerspective implements IHopPerspective {
             ui(
                 () -> {
                   busy(false, false);
+                  showUpdate(message(useOffline ? "OfflineLoadFailed" : "UpdateFailed"), false);
                   showError(e);
                   offline.setEnabled(e instanceof ManagedRepository.NetworkFailure);
                 });
@@ -259,19 +271,32 @@ public final class LauncherPerspective implements IHopPerspective {
         });
   }
 
-  private void selectApplication(int index) {
+  private void showUpdate(String text, boolean updating) {
+    updateMessage.setText(text);
+    updateProgress.setVisible(updating);
+    ((GridData) updateProgress.getLayoutData()).exclude = !updating;
+    updateBanner.setVisible(!text.isEmpty());
+    ((GridData) updateBanner.getLayoutData()).exclude = text.isEmpty();
+    control.layout(true, true);
+  }
+
+  private void selectApplication(ApplicationDefinition application, String organization) {
     for (Control child : form.getChildren()) child.dispose();
     fields.clear();
     output = "";
     open.setEnabled(false);
-    selected = index < 0 ? null : definitions.get(index);
+    selected = application;
+    open.setToolTipText(null);
     boolean hasOutput = selected != null && !selected.outputDirectoryParameter().isEmpty();
     open.setVisible(hasOutput);
     RowData outputLayout = new RowData();
     outputLayout.exclude = !hasOutput;
     open.setLayoutData(outputLayout);
     open.getParent().layout(true, true);
-    description.setText(selected == null ? "" : selected.title() + "\n" + selected.description());
+    description.setText(
+        selected != null
+            ? selected.title() + "\n" + selected.description()
+            : organization.isEmpty() ? "" : organization + "\n" + message("SelectApplication"));
     if (selected != null)
       for (Parameter p : selected.parameters()) {
         Label label = new Label(form, SWT.NONE);
@@ -396,6 +421,7 @@ public final class LauncherPerspective implements IHopPerspective {
                 || checkout.getText().isBlank())
               throw new IllegalArgumentException(message("SettingsRequired"));
             replacement.save();
+            if (!replacement.equals(settings)) apps.reset();
             settings = replacement;
             controller = new LauncherController(settings);
             dialog.dispose();

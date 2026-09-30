@@ -16,8 +16,25 @@ Ausführungsumgebung: Ein konfiguriertes Repository ist ausführbarer, vertrauen
 == Bedienung
 
 Öffnen Sie «Anwendungen» über die Hop-Perspektivenauswahl. Beim ersten Öffnen pro Sitzung
-wird das Repository aktualisiert. «Aktualisieren» wiederholt den Vorgang. Die Auswahl links
-enthält ausschliesslich die im Katalog gelisteten Anwendungen.
+werden die Anwendungen im Hintergrund aktualisiert. «Aktualisieren» wiederholt den Vorgang.
+Direkt unter der Toolbar erscheint dabei «Anwendungen werden aktualisiert …» mit einer kleinen
+unbestimmten Fortschrittsanzeige. Beim Offline-Laden lautet die Meldung «Lokale Anwendungen
+werden geladen …». Nach Abschluss verschwinden Meldung und Fortschrittsanzeige, auch bei einem
+leeren Katalog. Bei Fehlern bleibt dort ein verständlicher Hinweis stehen; technische Details
+erscheinen im vorhandenen Logbereich. Es gibt keinen zusätzlichen Dialog.
+
+Die Baumansicht links enthält ausschliesslich die im Katalog gelisteten Anwendungen, gruppiert
+nach Organisation. Der Organisationsname ist das erste Verzeichnis des Einstiegspfads;
+Anwendungen direkt in der Repository-Wurzel stehen unter «Allgemein». Die Organisationen sind
+alphabetisch sortiert, ihre Anwendungen behalten die Reihenfolge des Manifests. Pipeline und
+Workflow stehen gemeinsam unter ihrer Organisation und tragen die entsprechenden Hop-Symbole.
+Zusätzliche Ordner und Hilfspipelines werden nicht durchsucht.
+
+Beim ersten Laden sind alle Organisationen aufgeklappt und die erste Anwendung ausgewählt.
+«Aktualisieren» erhält Auswahl und Aufklappzustände bestehender Einträge. Entfällt die ausgewählte
+Anwendung, wird die erste verfügbare ausgewählt. Ein Organisationsknoten zeigt rechts «Anwendung
+auswählen»; «Starten» bleibt deaktiviert und der Ausgabeordner-Button verborgen. Wählen Sie ein
+Anwendungsblatt, um dessen Formular zu öffnen.
 
 [.gui-mockup]
 ----
@@ -25,13 +42,13 @@ Anwendungen
 [Einstellungen] [Aktualisieren] [Lokalen Stand offline verwenden]
 Stand: 0123456789abcdef...
 +----------------------+-----------------------------------------------+
-| Hello World          | Hello World                                  |
-| Hello World workflow | Vorhandene hello-world.csv wird ersetzt.     |
-|                      |                                              |
-|                      | XML-Datei *      [ /daten/eingabe.xml ] [...]|
-|                      | Ausgabeordner *  [ /daten/ausgabe     ] [...]|
-|                      |                                              |
-|                      | [Starten] [Abbrechen] [Ausgabeordner öffnen] |
+| ▾ demo               | Hello World                                   |
+|   Hello World        | Vorhandene hello-world.csv wird ersetzt.      |
+|   Hello World flow   |                                               |
+| ▾ weitere-org        | XML-Datei *      [ /daten/eingabe.xml ] [...] |
+|   Daten aufbereiten  | Ausgabeordner *  [ /daten/ausgabe     ] [...] |
+|                      |                                               |
+|                      | [Starten] [Abbrechen] [Ausgabeordner öffnen]  |
 +----------------------+-----------------------------------------------+
 Erfolgreich abgeschlossen
 [Gespeichertes Laufprotokoll öffnen]
@@ -43,9 +60,18 @@ Filtertext: [              ] [ ] Hervorheben [ ] Gross-/Kleinschreibung
 2026/01/01 10:00:00 - Application Launcher - demo.hello-world: SUCCESS
 ----
 
+Während der Aktualisierung ist die folgende Zeile direkt unter der Toolbar sichtbar:
+
+[.gui-mockup]
+----
+[Einstellungen] [Aktualisieren] [Lokalen Stand offline verwenden]
+[ ~~~~~ ] Anwendungen werden aktualisiert …
+----
+
 `[...]` steht für den beschrifteten Button «Durchsuchen…». Pflichtfelder tragen einen Stern.
 Dateiauswahl und Ordnerauswahl verwenden native
-SWT-Dialoge. Während eines Laufs sind Anwendungsauswahl, Einstellungen und Aktualisierung
+SWT-Dialoge. Während einer Aktualisierung oder eines Laufs ist die Baumansicht gesperrt.
+Während eines Laufs sind auch Einstellungen und Aktualisierung
 gesperrt. Ein Perspektivenwechsel beendet die Ausführung nicht. «Abbrechen» fordert einen
 kontrollierten Stopp an und wartet auf die Engine; bereits erzeugte Dateien werden nicht zurückgerollt.
 

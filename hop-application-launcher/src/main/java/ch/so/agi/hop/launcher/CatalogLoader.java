@@ -21,7 +21,10 @@ public final class CatalogLoader {
       Map<String, Object> app = map(item, manifest.toString());
       String id = text(app, "id", true);
       if (!ids.add(id)) throw invalid(manifest, "Duplicate application ID: " + id);
-      Path entry = inside(root, text(app, "entrypoint", true));
+      Path relativeEntry = Path.of(text(app, "entrypoint", true)).normalize();
+      Path entry = inside(root, relativeEntry.toString());
+      String organization =
+          relativeEntry.getNameCount() > 1 ? relativeEntry.getName(0).toString() : "";
       if (!(entry.toString().endsWith(".hpl") || entry.toString().endsWith(".hwf")))
         throw invalid(manifest, "Entrypoint must be .hpl or .hwf: " + entry);
       Path sidecar = inside(root, text(app, "sidecar", true));
@@ -45,6 +48,7 @@ public final class CatalogLoader {
         result.add(
             new ApplicationDefinition(
                 id,
+                organization,
                 entry,
                 sidecar,
                 text(form, "title", true),

@@ -37,3 +37,9 @@ check that the persisted log retains messages removed from the view and excludes
 The output action is tested with and without sidecar output metadata, after validation and engine
 failures, and when changing applications or refreshing. Closing an active view must cancel the engine,
 persist its log and stop the native log timer; hiding/reactivating the view must preserve the run.
+
+Tree checks cover multiple organizations, root-level applications, mixed pipeline/workflow icons,
+manifest order, unlisted files, organization selection, stable application IDs and retained expansion
+states after refresh. Removed selections fall back to the first application. Update banners and
+selection locks are checked on initial load, successful refresh, empty catalogs, network failure and
+explicit offline loading; the error details remain in the native log panel.

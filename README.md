@@ -4,9 +4,9 @@ A generic Apache Hop desktop perspective for running Git-managed applications wi
 
 ## Features
 
-- Curated application catalog for `.hpl` pipelines and `.hwf` workflows.
+- Curated application tree for `.hpl` pipelines and `.hwf` workflows, grouped by organization.
 - File, directory, string, choice and boolean fields; German and English UI.
-- Managed Git checkout, fast-forward updates and explicit offline operation.
+- Managed Git checkout, background update status, fast-forward updates and explicit offline operation.
 - Local execution, cancellation and revision-linked run reports.
 - Native Hop live logs with filtering and a contextual output-directory action.
 

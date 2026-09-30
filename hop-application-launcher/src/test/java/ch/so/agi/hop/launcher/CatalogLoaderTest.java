@@ -67,8 +67,24 @@ class CatalogLoaderTest {
     assertEquals(
         List.of(Type.FILE, Type.DIRECTORY, Type.CHOICE, Type.BOOLEAN, Type.STRING),
         app.parameters().stream().map(Parameter::type).toList());
+    assertEquals("", app.organization());
     assertEquals("Y", app.parameters().get(3).defaultValue());
     assertEquals("Hello", app.parameters().get(4).defaultValue());
+  }
+
+  @Test
+  void derivesOrganizationFromNormalizedEntrypointRatherThanIdOrSidecar() throws Exception {
+    Path root = catalog("", form);
+    Files.createDirectories(root.resolve("staatskanzlei/wahlresultate"));
+    Files.move(root.resolve("demo.hpl"), root.resolve("staatskanzlei/wahlresultate/demo.hpl"));
+    Path manifest = root.resolve("shared/hop/applications.yaml");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest)
+            .replace("entrypoint: demo.hpl", "entrypoint: ./staatskanzlei/wahlresultate/demo.hpl"));
+    var app = new CatalogLoader().load(root).getFirst();
+    assertEquals("demo", app.id());
+    assertEquals("staatskanzlei", app.organization());
   }
 
   @Test

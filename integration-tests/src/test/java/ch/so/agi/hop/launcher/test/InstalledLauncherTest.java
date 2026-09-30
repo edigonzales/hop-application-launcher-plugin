@@ -63,6 +63,7 @@ class InstalledLauncherTest {
     Files.createDirectories(output);
     copyTree(Path.of(System.getProperty("launcher.examples")), source);
     addLongRunningExample();
+    addOrganizationExamples();
     git(source, "init", "-b", "main");
     commit(source);
     input = work.resolve("Eingabe ä ; test.xml");
@@ -86,8 +87,11 @@ class InstalledLauncherTest {
       shell.open();
       perspective.perspectiveActivated();
       Composite content = (Composite) perspective.getControl();
+      assertUpdating(content, "Applications are being updated …");
+      screenshot(shell, "launcher-updating.png");
       waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
-      assertEquals(4, findApps(content).getItemCount());
+      verifyInitialTree(content);
+      selectApp(content, "demo.hello-world");
       assertTrue(findButton(content, "OpenOutput").getVisible());
       assertFalse(findButton(content, "OpenOutput").getEnabled());
       fill(content, "INPUT_XML", input.toString());
@@ -110,9 +114,7 @@ class InstalledLauncherTest {
       assertCsv(output, input);
       assertEquals(1, logText(content).getText().split("Starting demo.hello-world", -1).length - 1);
       // Selecting a workflow uses the same form, with parameters forwarded to its child pipeline.
-      var list = findApps(content);
-      list.select(1);
-      list.notifyListeners(SWT.Selection, new Event());
+      selectApp(content, "demo.workflow");
       fill(content, "INPUT_XML", input.toString());
       fill(content, "OUTPUT_DIR", output.toString());
       Files.delete(output.resolve("hello-world.csv"));
@@ -122,35 +124,24 @@ class InstalledLauncherTest {
       assertTrue(
           logText(content).getText().contains("Write CSV"), "Workflow children must be visible");
       assertFalse(logText(content).getText().contains("Starting demo.hello-world"));
-      Image screenshot =
-          new Image(display, shell.getClientArea().width, shell.getClientArea().height);
-      GC gc = new GC(shell);
-      try {
-        gc.copyArea(screenshot, 0, 0);
-        ImageLoader images = new ImageLoader();
-        images.data = new ImageData[] {screenshot.getImageData()};
-        images.save(work.resolve("launcher.png").toString(), SWT.IMAGE_PNG);
-      } finally {
-        gc.dispose();
-        screenshot.dispose();
-      }
+      screenshot(shell, "launcher.png");
       // Cancellation is a distinct outcome and keeps refresh disabled until the worker releases its
       // lease.
-      list.select(2);
-      list.notifyListeners(SWT.Selection, new Event());
+      selectApp(content, "demo.delay");
       fill(content, "INPUT_XML", input.toString());
       fill(content, "OUTPUT_DIR", output.toString());
       click(content, "Start");
       assertFalse(findButton(content, "Refresh").getEnabled());
+      assertFalse(findApps(content).getEnabled());
       click(content, "Cancel");
       waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
       assertTrue(
           allReports().stream().anyMatch(p -> "CANCELLED".equals(p.getProperty("status"))),
           "Cancellation must be recorded");
       verifyLogAndOutputControls(display, perspective, content);
+      verifyTreeAndRefresh(display, content);
       // Closing the view during execution cancels, but keeps logs until persistence finishes.
-      list.select(2);
-      list.notifyListeners(SWT.Selection, new Event());
+      selectApp(content, "demo.delay");
       fill(content, "INPUT_XML", input.toString());
       fill(content, "OUTPUT_DIR", output.toString());
       click(content, "Start");
@@ -354,9 +345,7 @@ class InstalledLauncherTest {
 
   private void verifyLogAndOutputControls(
       Display display, IHopPerspective perspective, Composite content) throws Exception {
-    var list = findApps(content);
-    list.select(3);
-    list.notifyListeners(SWT.Selection, new Event());
+    selectApp(content, "demo.no-output");
     assertFalse(findButton(content, "OpenOutput").getVisible());
     assertTrue(
         ((org.eclipse.swt.layout.RowData) findButton(content, "OpenOutput").getLayoutData())
@@ -368,8 +357,7 @@ class InstalledLauncherTest {
     assertFalse(findButton(content, "OpenOutput").getVisible());
     assertFalse(findButton(content, "OpenOutput").getEnabled());
 
-    list.select(2);
-    list.notifyListeners(SWT.Selection, new Event());
+    selectApp(content, "demo.delay");
     assertTrue(findButton(content, "OpenOutput").getVisible());
     assertFalse(findButton(content, "OpenOutput").getEnabled());
     fill(content, "INPUT_XML", input.toString());
@@ -468,8 +456,7 @@ class InstalledLauncherTest {
     assertFalse(logText(content).getText().contains("AFTER_CLEAR_ERROR"));
 
     // Engine failure still exposes the validated output directory.
-    list.select(0);
-    list.notifyListeners(SWT.Selection, new Event());
+    selectApp(content, "demo.hello-world");
     fill(content, "INPUT_XML", input.toString());
     fill(content, "OUTPUT_DIR", output.toString());
     Files.deleteIfExists(output.resolve("hello-world.csv"));
@@ -485,6 +472,196 @@ class InstalledLauncherTest {
     assertFalse(findButton(content, "OpenOutput").getVisible());
     waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
     assertFalse(findButton(content, "OpenOutput").getEnabled());
+  }
+
+  private void screenshot(Shell shell, String filename) {
+    shell.update();
+    Image screenshot =
+        new Image(shell.getDisplay(), shell.getClientArea().width, shell.getClientArea().height);
+    GC gc = new GC(shell);
+    try {
+      gc.copyArea(screenshot, 0, 0);
+      ImageLoader images = new ImageLoader();
+      images.data = new ImageData[] {screenshot.getImageData()};
+      images.save(work.resolve(filename).toString(), SWT.IMAGE_PNG);
+    } finally {
+      gc.dispose();
+      screenshot.dispose();
+    }
+  }
+
+  private void addOrganizationExamples() throws Exception {
+    Files.createDirectories(source.resolve("alpha"));
+    Files.createDirectories(source.resolve("zeta"));
+    Files.copy(source.resolve("demo/hello-world.hpl"), source.resolve("alpha/example.hpl"));
+    Files.copy(source.resolve("demo/hello-world.hpl"), source.resolve("root.hpl"));
+    Files.copy(source.resolve("demo/hello-world.hwf"), source.resolve("zeta/example.hwf"));
+    Files.copy(source.resolve("demo/hello-world.hpl"), source.resolve("alpha/unlisted.hpl"));
+    Files.writeString(
+        source.resolve("shared/hop/applications.yaml"),
+        """
+          - id: demo.root
+            entrypoint: root.hpl
+            sidecar: demo/hello-world.launcher.yaml
+          - id: demo.zeta
+            entrypoint: zeta/example.hwf
+            sidecar: demo/workflow.launcher.yaml
+          - id: demo.alpha
+            entrypoint: alpha/example.hpl
+            sidecar: demo/hello-world.launcher.yaml
+        """,
+        StandardOpenOption.APPEND);
+  }
+
+  private static void selectApp(Composite content, String id) {
+    Tree tree = findApps(content);
+    TreeItem item =
+        Arrays.stream(tree.getItems())
+            .flatMap(g -> Arrays.stream(g.getItems()))
+            .filter(i -> id.equals(i.getData("launcher.applicationId")))
+            .findFirst()
+            .orElseThrow();
+    selectItem(tree, item);
+  }
+
+  private static void selectItem(Tree tree, TreeItem item) {
+    tree.setSelection(item);
+    Event event = new Event();
+    event.item = item;
+    tree.notifyListeners(SWT.Selection, event);
+  }
+
+  private static String selectedId(Composite content) {
+    return (String) findApps(content).getData("launcher.selectedApplicationId");
+  }
+
+  private static TreeItem organization(Composite content, String key) {
+    return Arrays.stream(findApps(content).getItems())
+        .filter(i -> key.equals(i.getData("launcher.organization")))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  private static Control marked(Composite content, String key) {
+    return controls(content).stream()
+        .filter(c -> Boolean.TRUE.equals(c.getData(key)))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  private static void assertUpdating(Composite content, String text) {
+    assertTrue(marked(content, "launcher.updateProgress").isVisible());
+    assertEquals(text, ((Label) marked(content, "launcher.updateMessage")).getText());
+    assertFalse(findApps(content).getEnabled());
+    assertFalse(findButton(content, "Start").getEnabled());
+  }
+
+  private static void awaitRefresh(Display display, Composite content) throws Exception {
+    waitUi(display, () -> findButton(content, "Refresh").getEnabled(), Duration.ofSeconds(30));
+    assertFalse(marked(content, "launcher.updateProgress").isVisible());
+  }
+
+  private static void refreshSuccessfully(Display display, Composite content) throws Exception {
+    click(content, "Refresh");
+    assertUpdating(content, "Applications are being updated …");
+    awaitRefresh(display, content);
+    assertFalse(marked(content, "launcher.updateMessage").isVisible());
+  }
+
+  private static void verifyInitialTree(Composite content) {
+    Tree tree = findApps(content);
+    assertEquals(
+        List.of("alpha", "demo", "General", "zeta"),
+        Arrays.stream(tree.getItems()).map(TreeItem::getText).toList());
+    assertEquals(7, Arrays.stream(tree.getItems()).mapToInt(TreeItem::getItemCount).sum());
+    assertEquals("demo.alpha", selectedId(content));
+    for (TreeItem group : tree.getItems()) {
+      assertTrue(group.getExpanded());
+      assertNotNull(group.getImage());
+      for (TreeItem app : group.getItems()) assertNotNull(app.getImage());
+    }
+    TreeItem demo = organization(content, "demo");
+    assertEquals(
+        List.of("demo.hello-world", "demo.workflow", "demo.delay", "demo.no-output"),
+        Arrays.stream(demo.getItems()).map(i -> i.getData("launcher.applicationId")).toList());
+    assertNotSame(demo.getItem(0).getImage(), demo.getItem(1).getImage());
+    assertFalse(marked(content, "launcher.updateMessage").isVisible());
+  }
+
+  private void verifyTreeAndRefresh(Display display, Composite content) throws Exception {
+    Path manifest = source.resolve("shared/hop/applications.yaml");
+    String original = Files.readString(manifest);
+    selectApp(content, "demo.workflow");
+    organization(content, "alpha").setExpanded(false);
+    organization(content, "demo").setExpanded(false);
+    String workflow =
+        "  - id: demo.workflow\n"
+            + "    entrypoint: demo/hello-world.hwf\n"
+            + "    sidecar: demo/workflow.launcher.yaml\n";
+    Files.writeString(manifest, original.replace(workflow, "") + workflow);
+    commit(source);
+    refreshSuccessfully(display, content);
+    assertEquals("demo.workflow", selectedId(content));
+    assertFalse(organization(content, "alpha").getExpanded());
+    assertFalse(organization(content, "demo").getExpanded());
+    assertEquals(
+        "demo.workflow",
+        organization(content, "demo").getItem(3).getData("launcher.applicationId"));
+
+    selectItem(findApps(content), organization(content, "demo"));
+    assertFalse(findButton(content, "Start").getEnabled());
+    assertFalse(findButton(content, "OpenOutput").getVisible());
+    assertTrue(
+        controls(content).stream()
+            .anyMatch(
+                c -> c instanceof Label l && l.getText().equals("demo\nSelect an application")));
+    refreshSuccessfully(display, content);
+    assertNull(selectedId(content));
+    assertEquals("demo", findApps(content).getSelection()[0].getData("launcher.organization"));
+    assertFalse(findButton(content, "Start").getEnabled());
+
+    selectApp(content, "demo.workflow");
+    Files.writeString(manifest, original.replace(workflow, ""));
+    commit(source);
+    refreshSuccessfully(display, content);
+    assertEquals("demo.alpha", selectedId(content));
+
+    Files.writeString(manifest, "schemaVersion: 1\napplications: []\n");
+    commit(source);
+    refreshSuccessfully(display, content);
+    assertEquals(0, findApps(content).getItemCount());
+    assertFalse(findButton(content, "Start").getEnabled());
+    assertFalse(findButton(content, "OpenOutput").getVisible());
+
+    Files.writeString(manifest, original);
+    commit(source);
+    refreshSuccessfully(display, content);
+    selectApp(content, "demo.workflow");
+    organization(content, "zeta").setExpanded(false);
+    Path unavailable = source.resolveSibling("offline-source");
+    Files.move(source, unavailable);
+    try {
+      click(content, "Refresh");
+      assertUpdating(content, "Applications are being updated …");
+      awaitRefresh(display, content);
+      assertTrue(marked(content, "launcher.updateMessage").isVisible());
+      assertEquals(
+          "Applications could not be updated. See the log for details.",
+          ((Label) marked(content, "launcher.updateMessage")).getText());
+      assertFalse(logText(content).getText().isBlank());
+      assertFalse(findButton(content, "Start").getEnabled());
+      assertTrue(findButton(content, "Offline").getEnabled());
+      click(content, "Offline");
+      assertUpdating(content, "Loading local applications …");
+      awaitRefresh(display, content);
+      assertFalse(marked(content, "launcher.updateMessage").isVisible());
+      assertEquals("demo.workflow", selectedId(content));
+      assertFalse(organization(content, "zeta").getExpanded());
+      assertTrue(findButton(content, "Start").getEnabled());
+    } finally {
+      Files.move(unavailable, source);
+    }
+    refreshSuccessfully(display, content);
   }
 
   private static StyledText logText(Composite content) {
@@ -545,8 +722,8 @@ class InstalledLauncherTest {
             .orElseThrow();
   }
 
-  private static org.eclipse.swt.widgets.List findApps(Composite root) {
-    return (org.eclipse.swt.widgets.List)
+  private static Tree findApps(Composite root) {
+    return (Tree)
         controls(root).stream()
             .filter(c -> Boolean.TRUE.equals(c.getData("launcher.apps")))
             .findFirst()
