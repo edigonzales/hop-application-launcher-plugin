@@ -1,0 +1,7 @@
+= Hop Application Launcher
+
+Der Application Launcher bietet eine einfache Oberfläche zum Starten versionierter
+Hop-Pipelines und Workflows. Das Handbuch beschreibt Installation, Bedienung,
+Anwendungskonfiguration und Entwicklung.
+
+xref:master.adoc[Vollständiges Handbuch]

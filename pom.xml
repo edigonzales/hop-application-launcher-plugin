@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>ch.so.agi</groupId>
+    <artifactId>hop-plugin-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath/>
+  </parent>
+  <groupId>ch.so.agi</groupId>
+  <artifactId>hop-application-launcher-plugin-parent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Hop Application Launcher</name>
+  <description>Generic desktop launcher for versioned Hop applications.</description>
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/license/mit/</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <modules>
+    <module>hop-application-launcher</module>
+    <module>assemblies</module>
+    <module>integration-tests</module>
+  </modules>
+  <repositories>
+    <repository>
+      <id>sogeo-snapshots</id>
+      <url>https://jars.interlis.guru/snapshots/</url>
+    </repository>
+  </repositories>
+</project>

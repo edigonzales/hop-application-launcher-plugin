@@ -1,0 +1,41 @@
+site:
+  title: "Hop Application Launcher"
+  url: https://edigonzales.github.io/hop-application-launcher-plugin/
+  default_language: en
+
+output:
+  dir: build/site
+  clean: true
+
+ui:
+  theme: default
+  show_version_badge: false
+  show_edit_link: false
+  show_source_link: false
+  syntax_highlighting: prism
+  version_switch_mode: start_page
+  search_language_mode: multilingual_safe
+  sidebar_toc_depth: 2
+  content_toc: off
+  content_section_numbers: on
+  content_section_number_depth: 3
+
+content:
+  sources:
+    - id: application-launcher
+      display_name: Application Launcher
+      url: https://github.com/edigonzales/hop-application-launcher-plugin.git
+      branches:
+        - name: main
+          display_version: Latest
+      start_path: docs
+      default_version: main
+      render_mode: single_page
+      master_file: master.adoc
+      sidebar_toc_numbers: on
+
+pdf:
+  enabled: false
+
+docx:
+  enabled: false

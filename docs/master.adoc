@@ -1,0 +1,212 @@
+= Hop Application Launcher
+:toc:
+:toclevels: 3
+
+== Zweck und Installation
+
+Der Launcher ergänzt Apache Hop 2.19.0 um die Perspektive «Anwendungen».
+Er benötigt Java 21 oder 25 und eine Desktop-Oberfläche. Entpacken Sie das Plugin-ZIP
+in das Hop-Installationsverzeichnis und starten Sie Hop neu. Die Dateien liegen danach
+unter `plugins/misc/hop-application-launcher`.
+
+Die Fachlogik bleibt in normalen `.hpl`- und `.hwf`-Dateien. Der Launcher unterstützt
+lokale Ausführung. Er ersetzt weder eine Berechtigungsverwaltung noch eine isolierte
+Ausführungsumgebung: Ein konfiguriertes Repository ist ausführbarer, vertrauenswürdiger Anwendungscode.
+
+== Bedienung
+
+Öffnen Sie «Anwendungen» über die Hop-Perspektivenauswahl. Beim ersten Öffnen pro Sitzung
+wird das Repository aktualisiert. «Aktualisieren» wiederholt den Vorgang. Die Auswahl links
+enthält ausschliesslich die im Katalog gelisteten Anwendungen.
+
+[.gui-mockup]
+----
+Anwendungen
+[Einstellungen] [Aktualisieren] [Lokalen Stand offline verwenden]
+Stand: 0123456789abcdef...
++----------------------+-----------------------------------------------+
+| Hello World          | Hello World                                   |
+| Hello World workflow | Vorhandene hello-world.csv wird ersetzt.      |
+|                      |                                               |
+|                      | XML-Datei *      [ /daten/eingabe.xml ] [...] |
+|                      | Ausgabeordner *  [ /daten/ausgabe     ] [...] |
+|                      |                                               |
+|                      | [Starten] [Abbrechen] [Ausgabeordner öffnen]  |
++----------------------+-----------------------------------------------+
+Erfolgreich abgeschlossen
+> Laufdetails und Protokoll
+----
+
+`[...]` steht für den beschrifteten Button «Durchsuchen…»; `>` steht für das aufklappbare
+Protokoll. Pflichtfelder tragen einen Stern. Dateiauswahl und Ordnerauswahl verwenden native
+SWT-Dialoge. Während eines Laufs sind Anwendungsauswahl, Einstellungen und Aktualisierung
+gesperrt. Ein Perspektivenwechsel beendet die Ausführung nicht. «Abbrechen» fordert einen
+kontrollierten Stopp an und wartet auf die Engine; bereits erzeugte Dateien werden nicht zurückgerollt.
+
+Nach einem Netzwerkfehler ist «Lokalen Stand offline verwenden» verfügbar, wenn sich ein
+lokaler Checkout validieren lässt. Offline-Nutzung wird ausdrücklich gewählt und bleibt in
+der Standanzeige sichtbar. Fehlerdetails erscheinen im aufklappbaren Protokoll.
+
+=== Einstellungen
+
+«Einstellungen» öffnet diesen Dialog. «Speichern» übernimmt die Werte und aktualisiert
+den Katalog; «Schliessen» verwirft Änderungen.
+
+[.gui-mockup]
+----
+Einstellungen
+Repository-URL                   [ https://example.org/team/jobs.git ]
+Branch                           [ main                              ]
+Verwaltetes Checkout-Verzeichnis [ /home/user/hop-config/apps       ]
+[Speichern] [Schliessen]
+----
+
+Standard ist `https://github.com/sogis/datenportal-themenrepo.git`, Branch `main`, mit einem
+eigenen Checkout unter `HOP_CONFIG_FOLDER/application-launcher/checkout`.
+Die Einstellungen liegen als `applicationLauncher.repository`, `.branch` und `.checkout`
+in der Hop-Konfiguration. Zugangsdialoge, private Repository-Authentisierung und SSH werden
+in dieser Version nicht angeboten. Unterstützt werden öffentliche HTTPS-URLs, absolute lokale
+Git-Pfade und `file:`-URLs. Die Anwendung benötigt keine Git-CLI.
+
+== Anwendungskonfiguration
+
+=== Katalog
+
+`shared/hop/applications.yaml` enthält `schemaVersion: 1` und eine geordnete Liste `applications`.
+Jeder Eintrag hat eine eindeutige `id`, einen `entrypoint` und einen `sidecar`-Pfad, jeweils
+relativ zur Repository-Wurzel. Es werden ausschliesslich `.hpl` und `.hwf` akzeptiert.
+Pfade müssen auch nach Auflösung symbolischer Links im Checkout bleiben.
+
+[source,yaml]
+----
+schemaVersion: 1
+applications:
+  - id: staatskanzlei.wahlresultate
+    entrypoint: staatskanzlei/wahlresultate/wahlresultate.hpl
+    sidecar: staatskanzlei/wahlresultate/wahlresultate.launcher.yaml
+----
+
+Hilfspipelines müssen nicht im Katalog stehen. Ein ungültiger Katalog wird nicht teilweise
+als ausführbare Anwendungsliste übernommen. Unbekannte Schemaversionen, doppelte YAML-Schlüssel,
+doppelte IDs, fehlende Dateien und ungültige Parameterbeschreibungen werden mit Dateibezug gemeldet.
+
+=== Sidecar und Parameter
+
+[source,yaml]
+----
+schemaVersion: 1
+title: Wahlresultate – Hello World
+description: Eine vorhandene hello-world.csv im Ausgabeordner wird ersetzt.
+outputDirectoryParameter: OUTPUT_DIR
+parameters:
+  INPUT_XML:
+    label: XML-Datei
+    type: file
+    required: true
+    extensions: [xml]
+  OUTPUT_DIR:
+    label: Ausgabeordner
+    type: directory
+    required: true
+----
+
+`title` ist erforderlich, `description` optional. Parameternamen, Standardwerte und vorhandene
+Beschreibungen stammen aus der Hop-Datei. Sidecars ergänzen `label`, `description`, `type`,
+`required`, `extensions` und `values`. Sie definieren keine eigenen Standardwerte.
+Sidecar-Parameter müssen in Hop deklariert sein. Formularreihenfolge ist die YAML-Reihenfolge;
+übrige deklarierte Hop-Parameter folgen alphabetisch als Textfelder.
+
+[cols="1,2,3",options="header"]
+|===
+| Typ | Bedienelement | Vertrag
+| `string` | Textfeld | Standardtyp; unveränderte String-Übergabe.
+| `file` | Textfeld und Dateiauswahl | Bestehende lesbare Datei; optionale Erweiterungen ohne Punkt, etwa `[xml]`.
+| `directory` | Textfeld und Ordnerauswahl | Bestehendes Verzeichnis.
+| `choice` | Feste Auswahlliste | Nichtleere eindeutige String-Liste `values`; Standardwert muss darin vorkommen oder leer sein.
+| `boolean` | Checkbox | Übergabe `Y` oder `N`; leerer Hop-Standard bedeutet `N`, andere Standards werden abgewiesen.
+|===
+
+`required: true` verhindert leere Eingaben. Bei Checkboxen ist sowohl `Y` als auch `N` ein
+zulässiger Wert. Der optionale Schlüssel `outputDirectoryParameter` muss einen Directory-Parameter
+bezeichnen. Er verlangt ein beschreibbares Verzeichnis und ermöglicht «Ausgabeordner öffnen».
+Datei- und Verzeichnispfade werden vor Übergabe zu absoluten kanonischen Pfaden aufgelöst;
+Eingaben und Ausgaben müssen ausserhalb des verwalteten Checkouts liegen.
+
+=== Hop-Kontext
+
+Der Launcher setzt `PROJECT_HOME` auf die Checkout-Wurzel und liest Metadaten ausschliesslich
+unter `shared/hop/metadata`. Pipeline- und Workflow-Ausführungskonfigurationen heissen jeweils
+`launcher-local` und müssen die lokale Engine verwenden. Weitere Verbindungen und Metadaten
+können dort versioniert werden. Das aktuell in Hop geöffnete Projekt wird nicht gewechselt
+und sein Variablenraum wird nicht übernommen. Zusätzliche Infrastruktur-Konfiguration und
+private Git-Authentisierung sind keine Funktionen dieser ersten Version.
+
+Workflows reichen benötigte Parameter über ihre Pipeline-Actions weiter; ein Beispiel liegt
+unter `examples/hello-world/demo/hello-world.hwf`. Die erforderlichen Action-/Transform-Plugins
+müssen in Hop installiert sein. Bei fehlenden Plugins wird die Anwendung nicht gestartet.
+
+=== Pilot Wahlresultate
+
+Der Pilot liegt im Themenrepo unter `staatskanzlei/wahlresultate` und hat die ID
+`staatskanzlei.wahlresultate`. Er verwendet Get Variables → Add Constants → Text File Output.
+`INPUT_XML` und `OUTPUT_DIR` sind ohne Standardwerte deklariert. Die XML-Datei wird auf
+Lesbarkeit geprüft, ihr Inhalt aber noch nicht verarbeitet.
+
+Die Ausgabe `hello-world.csv` enthält UTF-8, Semikolontrennung, korrektes CSV-Quoting,
+eine Kopfzeile `message;input_file` und eine Datenzeile mit `Hello World` und dem Eingabepfad.
+Jeder Lauf ersetzt die bestehende Datei; es werden weder Zeitstempel angehängt noch alte
+Zeilen beibehalten. Bei Fehlern können unvollständige Ausgaben bestehen bleiben.
+
+XML-Eingaben gehören nicht ins Themenrepo: Der Datenportal-Vertrag erwartet genau eine
+XML-/XTF-Datenblattdatei direkt im Datenthema. Der Hello-World-Pilot richtet keine
+Datenportal-Publikation ein und benötigt kein fachliches Datenblatt für den Launcher.
+
+== Betrieb, Architektur und Entwicklung
+
+=== Git und Nachvollziehbarkeit
+
+Der Launcher klont fehlende Checkouts und aktualisiert mit Fetch und Fast-forward.
+Lokale Änderungen, falsche Origins/Branches und divergierende Historien führen zum Abbruch;
+es gibt kein Reset, Stash, Rebase, Commit oder Push. Ein Dateilock neben dem Checkout
+schützt Aktualisierung und Ausführung auch zwischen Launcher-Prozessen. Die Sperre wird
+automatisch freigegeben. Sie koordiniert Launcher-Instanzen, nicht externe Git-Programme;
+den verwalteten Ordner deshalb nicht parallel manuell bearbeiten.
+
+Ein Lauf verwendet den zuvor geladenen Commit. Bei zwischenzeitlich geändertem Stand muss
+das Formular aktualisiert werden. Nach einem Netzfehler kann der lokale Stand erneut validiert
+und explizit offline verwendet werden. Konfigurationsfehler werden nicht als Netzfehler behandelt.
+
+Unter `HOP_CONFIG_FOLDER/application-launcher/runs` erhält jeder Lauf einen eigenen Ordner mit
+`run.properties` (Anwendungs-ID, Commit, Start, Ende, Status, Fehler) und `hop.log`.
+Die Statuswerte sind `SUCCESS`, `FAILED` und `CANCELLED`. Protokolle werden nicht automatisch
+gelöscht; ihre Aufbewahrung kann betrieblich über dieses separate Verzeichnis geregelt werden.
+
+=== Komponenten und Tests
+
+`CatalogLoader` validiert YAML und verbindet Formulare mit Hop-Parameterdefinitionen.
+`ManagedRepository` verwaltet Git und Sperren. `LauncherController` hält Katalogstand und
+Lauf zusammen. `ExecutionService` führt Hop im eigenen `HopRuntimeContext` aus.
+`LauncherPerspective` beschränkt sich auf SWT-Steuerelemente und asynchrone Bedienung.
+
+Das Maven-Projekt verwendet den gemeinsamen `ch.so.agi:hop-plugin-parent` und das
+`desktop-plugin`-Profil aus `hop-plugin-ci`. Hop/SWT bleiben Host-Abhängigkeiten;
+JGit und SnakeYAML Engine liegen im Plugin-ZIP. Die Dokumentation folgt dem
+https://github.com/edigonzales/hop-plugin-ci/blob/main/docs/plugin-repository-contract.md[Repository-Vertrag].
+
+[source,shell]
+----
+mvn -s "$MAVEN_SETTINGS" -B -ntp clean verify
+python3 scripts/verify-package.py
+python3 scripts/check-docs.py
+python3 scripts/build-docs-site.py
+----
+
+Maven-Settings werden mit `write_maven_settings.py` aus dem CI-Repository erzeugt.
+Konkrete Voraussetzungen und Testbefehle stehen in `AGENTS.md` im Repository.
+CI testet Java 21/25 unter Linux/macOS/Windows. Ubuntu/Java 21 liefert das kanonische ZIP.
+Installed-E2E testet dieses ZIP mit einer separaten SWT-/Hop-Testklasse, die keine Abhängigkeit
+auf das Launcher-Modul besitzt. Eine Testkopie des Themenrepos ermöglicht die lokale Abnahme
+mit realen Eingabedateien ohne Änderungen an dessen Git-Historie.
+
+Biblios baut lokale Änderungen oder explizit den Checkout-Commit; der Site-Build prüft das
+Einbinden der GUI-CSS-Regeln. PRs prüfen Dokumentation und Builds, nur `main` publiziert.

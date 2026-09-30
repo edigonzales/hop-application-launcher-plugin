@@ -1,0 +1,33 @@
+<?xml version="1.0" ?>
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.1.1">
+  <id>plugin</id>
+  <formats>
+    <format>zip</format>
+  </formats>
+  <includeBaseDirectory>false</includeBaseDirectory>
+  <dependencySets>
+    <dependencySet>
+      <outputDirectory>plugins/misc/hop-application-launcher</outputDirectory>
+      <useProjectArtifact>false</useProjectArtifact>
+      <useTransitiveDependencies>false</useTransitiveDependencies>
+      <scope>runtime</scope>
+      <includes>
+        <include>ch.so.agi:hop-application-launcher</include>
+      </includes>
+    </dependencySet>
+    <dependencySet>
+      <outputDirectory>plugins/misc/hop-application-launcher/lib</outputDirectory>
+      <useProjectArtifact>false</useProjectArtifact>
+      <scope>runtime</scope>
+      <excludes>
+        <exclude>ch.so.agi:hop-application-launcher</exclude>
+      </excludes>
+    </dependencySet>
+  </dependencySets>
+  <files>
+    <file>
+      <source>../LICENSE</source>
+      <outputDirectory>plugins/misc/hop-application-launcher</outputDirectory>
+    </file>
+  </files>
+</assembly>

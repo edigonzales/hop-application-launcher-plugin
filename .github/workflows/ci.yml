@@ -1,0 +1,75 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: raven-actions/actionlint@v2
+  verify:
+    uses: ./.github/workflows/verify.yml
+    secrets: inherit
+  installed-e2e:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/checkout@v4
+        with:
+          repository: edigonzales/hop-plugin-ci
+          ref: main
+          path: .ci/hop-plugin-ci
+      - name: Prepare Maven settings
+        run: |
+          python3 .ci/hop-plugin-ci/scripts/write_maven_settings.py --output "$RUNNER_TEMP/maven-settings.xml"
+          echo "MAVEN_SETTINGS=$RUNNER_TEMP/maven-settings.xml" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: hop-application-launcher-plugin-canonical
+          path: .ci/canonical
+      - name: Install clean Hop
+        run: python3 scripts/prepare-hop.py --destination .ci/hop-test
+      - name: Test canonical installed ZIP
+        shell: bash
+        run: |
+          mapfile -t bundles < <(find .ci/canonical -name 'hop-application-launcher-plugin-*.zip')
+          test "${#bundles[@]}" -eq 1
+          xvfb-run -a python3 scripts/run-e2e.py --hop-home .ci/hop-test/hop --plugin-zip "${bundles[0]}"
+      - name: Preserve E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-installed-e2e
+          path: |
+            integration-tests/target/surefire-reports
+            integration-tests/target/installed-e2e
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [lint, verify, installed-e2e]
+    uses: edigonzales/hop-plugin-ci/.github/workflows/plugin-publish.yml@main
+    with:
+      ci-ref: main
+      repository-kind: snapshot
+      verified-artifact-name: hop-application-launcher-plugin-canonical
+      pom-file: pom.xml
+      zip-descriptors: >-
+        [{"artifactId":"hop-application-launcher-plugin","zipGlob":"assemblies/target/hop-application-launcher-plugin-*.zip","pluginRoot":"plugins/misc/hop-application-launcher"}]
+      group-id: ch.so.agi
+      hop-version: 2.19.0
+    secrets:
+      MAVEN_USERNAME: ${{ secrets.INTERLIS_MAVEN_USERNAME }}
+      MAVEN_PASSWORD: ${{ secrets.INTERLIS_MAVEN_TOKEN }}
