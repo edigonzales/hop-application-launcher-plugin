@@ -19,7 +19,8 @@ public record LauncherSettings(String repository, String branch, Path checkout) 
         HopConfig.readOptionString("applicationLauncher.branch", "main"),
         Path.of(
             HopConfig.readOptionString(
-                "applicationLauncher.checkout", stateDirectory().resolve("checkout").toString())));
+                "applicationLauncher.checkout",
+                Path.of(System.getProperty("user.home"), ".hop", "checkout").toString())));
   }
 
   public void save() {

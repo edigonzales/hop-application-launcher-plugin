@@ -113,12 +113,13 @@ den Katalog; «Schliessen» verwirft Änderungen.
 Einstellungen
 Repository-URL                   [ https://example.org/team/jobs.git ]
 Branch                           [ main                              ]
-Verwaltetes Checkout-Verzeichnis [ /home/user/hop-config/apps       ]
+Verwaltetes Checkout-Verzeichnis [ /home/user/.hop/checkout          ]
 [Speichern] [Schliessen]
 ----
 
 Standard ist `https://github.com/sogis/datenportal-themenrepo.git`, Branch `main`, mit einem
-eigenen Checkout unter `HOP_CONFIG_FOLDER/application-launcher/checkout`.
+eigenen Checkout im Home-Verzeichnis des Benutzers unter `~/.hop/checkout`.
+Bereits gespeicherte Checkout-Pfade werden weiterhin verwendet.
 Die Einstellungen liegen als `applicationLauncher.repository`, `.branch` und `.checkout`
 in der Hop-Konfiguration. Zugangsdialoge, private Repository-Authentisierung und SSH werden
 in dieser Version nicht angeboten. Unterstützt werden öffentliche HTTPS-URLs, absolute lokale
