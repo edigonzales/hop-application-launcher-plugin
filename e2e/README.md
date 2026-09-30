@@ -43,3 +43,8 @@ manifest order, unlisted files, organization selection, stable application IDs a
 states after refresh. Removed selections fall back to the first application. Update banners and
 selection locks are checked on initial load, successful refresh, empty catalogs, network failure and
 explicit offline loading; the error details remain in the native log panel.
+
+The collapsed-selection regression also emulates GTK moving its native highlight to an organization
+without a user selection event. Refresh must retain the previously selected application and its
+form, and late selection events from disposed items must be ignored. Explicitly selecting an
+organization still clears the form and disables Start.

@@ -24,9 +24,9 @@ final class ApplicationTree {
     tree.addListener(
         SWT.Selection,
         e -> {
-          if (tree.getSelectionCount() > 0) {
-            rememberSelection();
-            notifySelection();
+          if (tree.isEnabled() && e.item instanceof TreeItem item && !item.isDisposed()) {
+            rememberSelection(item);
+            notifySelection(item);
           }
         });
   }
@@ -40,10 +40,11 @@ final class ApplicationTree {
     if (tree.getItemCount() > 0) {
       for (TreeItem group : tree.getItems())
         expanded.put((String) group.getData("launcher.organization"), group.getExpanded());
-      rememberSelection();
+      // Native selection can move to the parent when GTK collapses a selected leaf.
+      // Only explicit selection events change the application's logical selection.
     }
     tree.removeAll();
-    notifySelection();
+    notifySelection(null);
   }
 
   void reset() {
@@ -51,7 +52,7 @@ final class ApplicationTree {
     expanded.clear();
     selectedId = null;
     selectedOrganization = null;
-    notifySelection();
+    notifySelection(null);
   }
 
   void populate(List<ApplicationDefinition> applications) {
@@ -88,12 +89,12 @@ final class ApplicationTree {
       }
       target = restored != null ? restored : first;
       if (target != null) {
-        tree.setSelection(target);
-        rememberSelection();
-        // setSelection expands ancestors on Cocoa. Restore their state after selecting the leaf.
-        for (TreeItem group : tree.getItems())
-          group.setExpanded(
-              expanded.getOrDefault((String) group.getData("launcher.organization"), true));
+        rememberSelection(target);
+        // Selecting a hidden leaf expands its parent; collapsing it again queues GTK selection
+        // events for the parent. Keep the logical selection without moving the native highlight.
+        if (target.getParentItem() == null || target.getParentItem().getExpanded()) {
+          tree.setSelection(target);
+        }
       }
       expanded.keySet().retainAll(groups.keySet());
     } finally {
@@ -106,18 +107,9 @@ final class ApplicationTree {
     notifySelection(target);
   }
 
-  private void rememberSelection() {
-    TreeItem[] current = tree.getSelection();
-    // Cocoa can clear the native selection when its parent is collapsed. Keep the form's identity.
-    if (current.length > 0) {
-      selectedId = (String) current[0].getData("launcher.applicationId");
-      selectedOrganization = (String) current[0].getData("launcher.organization");
-    }
-  }
-
-  private void notifySelection() {
-    TreeItem[] items = tree.getSelection();
-    notifySelection(items.length == 0 ? null : items[0]);
+  private void rememberSelection(TreeItem item) {
+    selectedId = (String) item.getData("launcher.applicationId");
+    selectedOrganization = (String) item.getData("launcher.organization");
   }
 
   private void notifySelection(TreeItem item) {

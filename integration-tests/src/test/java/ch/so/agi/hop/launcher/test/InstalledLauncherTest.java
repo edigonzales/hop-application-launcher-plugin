@@ -592,8 +592,13 @@ class InstalledLauncherTest {
     Path manifest = source.resolve("shared/hop/applications.yaml");
     String original = Files.readString(manifest);
     selectApp(content, "demo.workflow");
+    TreeItem oldOrganization = organization(content, "demo");
     organization(content, "alpha").setExpanded(false);
     organization(content, "demo").setExpanded(false);
+    // GTK may move the native highlight to the collapsed parent without a user selection event.
+    // Emulate that on every platform: refresh must retain the application shown in the form.
+    findApps(content).setSelection(organization(content, "demo"));
+    assertEquals("demo.workflow", selectedId(content));
     String workflow =
         "  - id: demo.workflow\n"
             + "    entrypoint: demo/hello-world.hwf\n"
@@ -602,8 +607,18 @@ class InstalledLauncherTest {
     commit(source);
     refreshSuccessfully(display, content);
     assertEquals("demo.workflow", selectedId(content));
+    assertTrue(findButton(content, "Start").getEnabled());
+    assertTrue(
+        controls(content).stream()
+            .anyMatch(
+                c -> c instanceof Label l && l.getText().startsWith("Hello World workflow\n")));
     assertFalse(organization(content, "alpha").getExpanded());
     assertFalse(organization(content, "demo").getExpanded());
+    // Late GTK events from the disposed pre-refresh tree must not select a new organization.
+    Event staleSelection = new Event();
+    staleSelection.item = oldOrganization;
+    findApps(content).notifyListeners(SWT.Selection, staleSelection);
+    assertEquals("demo.workflow", selectedId(content));
     assertEquals(
         "demo.workflow",
         organization(content, "demo").getItem(3).getData("launcher.applicationId"));
