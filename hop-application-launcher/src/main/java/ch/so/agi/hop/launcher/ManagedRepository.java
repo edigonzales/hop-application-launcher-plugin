@@ -13,9 +13,9 @@ import org.eclipse.jgit.revwalk.RevWalk;
 
 /** Exclusive cross-process lease covers update, catalog validation and the entire execution. */
 public final class ManagedRepository {
-  private final LauncherSettings settings;
+  private final LauncherSettings.RepositoryLocation settings;
 
-  public ManagedRepository(LauncherSettings settings) {
+  public ManagedRepository(LauncherSettings.RepositoryLocation settings) {
     this.settings = settings;
   }
 
@@ -65,7 +65,7 @@ public final class ManagedRepository {
     }
 
     public String update() throws Exception {
-      validateSource();
+      validateSource(settings.repository(), settings.branch());
       if (!Files.exists(root)) {
         Path staging = Files.createTempDirectory(root.getParent(), ".launcher-clone-");
         try {
@@ -112,7 +112,7 @@ public final class ManagedRepository {
 
     /** Validate even offline/running: never execute a stale form against a modified checkout. */
     public String revision() throws Exception {
-      validateSource();
+      validateSource(settings.repository(), settings.branch());
       try (Git git = openValidated()) {
         return git.getRepository().resolve("HEAD").name();
       }
@@ -151,9 +151,8 @@ public final class ManagedRepository {
     }
   }
 
-  private void validateSource() throws Exception {
-    String source = settings.repository();
-    if (source.isBlank() || !Repository.isValidRefName("refs/heads/" + settings.branch()))
+  static void validateSource(String source, String branch) throws Exception {
+    if (source.isBlank() || !Repository.isValidRefName("refs/heads/" + branch))
       throw new IOException("Repository and valid branch are required");
     // Native paths (including Windows drive letters) and file URIs are useful for offline tests.
     if (source.startsWith("file:")) {

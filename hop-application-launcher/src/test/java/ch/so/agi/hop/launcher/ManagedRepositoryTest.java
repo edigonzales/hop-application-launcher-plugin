@@ -24,11 +24,63 @@ class ManagedRepositoryTest {
   }
 
   @Test
+  void multipleRepositoriesAndBranchesKeepIndependentCheckoutsAndOfflineRevisions()
+      throws Exception {
+    try (Git first = source();
+        Git second =
+            Git.init()
+                .setInitialBranch("release")
+                .setDirectory(temp.resolve("second-source").toFile())
+                .call()) {
+      commit(second, "second repository");
+      var a =
+          new LauncherSettings.RepositoryEntry(
+              "a", "First", first.getRepository().getWorkTree().toString(), "main");
+      var b =
+          new LauncherSettings.RepositoryEntry(
+              "b", "Second", second.getRepository().getWorkTree().toString(), "release");
+      Path base = temp.resolve("repositories");
+      var repoA = new ManagedRepository(a.location(base));
+      var repoB = new ManagedRepository(b.location(base));
+      String revisionA, revisionB;
+      try (var leaseA = repoA.lock();
+          var leaseB = repoB.lock()) {
+        revisionA = leaseA.update();
+        revisionB = leaseB.update();
+        assertEquals("first", Files.readString(leaseA.root().resolve("data.txt")));
+        assertEquals("second repository", Files.readString(leaseB.root().resolve("data.txt")));
+        assertThrows(Exception.class, repoA::lock);
+        assertThrows(Exception.class, repoB::lock);
+      }
+      commit(first, "updated first");
+      try (var leaseA = repoA.lock();
+          var leaseB = repoB.lock()) {
+        assertNotEquals(revisionA, leaseA.update());
+        assertEquals(revisionB, leaseB.revision());
+      }
+      second.close();
+      Files.move(temp.resolve("second-source"), temp.resolve("unavailable-second"));
+      try (var leaseB = repoB.lock()) {
+        assertThrows(ManagedRepository.NetworkFailure.class, leaseB::update);
+        assertEquals(revisionB, leaseB.revision());
+      }
+      // Changing a configured branch creates a different checkout and preserves the old one.
+      first.branchCreate().setName("feature").call();
+      var feature = new LauncherSettings.RepositoryEntry("a", "First", a.repository(), "feature");
+      try (var lease = new ManagedRepository(feature.location(base)).lock()) {
+        lease.update();
+        assertNotEquals(a.location(base).checkout(), lease.root());
+      }
+      assertTrue(Files.isDirectory(a.location(base).checkout().resolve(".git")));
+    }
+  }
+
+  @Test
   void cloneUpdateAndExclusiveLease() throws Exception {
     try (Git source = source()) {
       ManagedRepository repo =
           new ManagedRepository(
-              new LauncherSettings(
+              new LauncherSettings.RepositoryLocation(
                   source.getRepository().getWorkTree().toString(),
                   "main",
                   temp.resolve("checkout")));
@@ -51,7 +103,7 @@ class ManagedRepositoryTest {
     try (Git source = source()) {
       ManagedRepository repo =
           new ManagedRepository(
-              new LauncherSettings(
+              new LauncherSettings.RepositoryLocation(
                   source.getRepository().getWorkTree().toString(),
                   "main",
                   temp.resolve("checkout")));
@@ -78,7 +130,8 @@ class ManagedRepositoryTest {
       Files.createDirectory(checkout);
       Files.writeString(checkout.resolve("keep"), "keep");
       var settings =
-          new LauncherSettings(source.getRepository().getWorkTree().toString(), "main", checkout);
+          new LauncherSettings.RepositoryLocation(
+              source.getRepository().getWorkTree().toString(), "main", checkout);
       try (var lease = new ManagedRepository(settings).lock()) {
         assertThrows(Exception.class, lease::update);
       }
@@ -88,13 +141,15 @@ class ManagedRepositoryTest {
         lease.update();
       }
       try (var lease =
-          new ManagedRepository(new LauncherSettings(settings.repository(), "other", checkout))
+          new ManagedRepository(
+                  new LauncherSettings.RepositoryLocation(settings.repository(), "other", checkout))
               .lock()) {
         assertThrows(Exception.class, lease::revision);
       }
       try (var lease =
           new ManagedRepository(
-                  new LauncherSettings(temp.resolve("other").toString(), "main", checkout))
+                  new LauncherSettings.RepositoryLocation(
+                      temp.resolve("other").toString(), "main", checkout))
               .lock()) {
         assertThrows(Exception.class, lease::revision);
       }
@@ -106,7 +161,7 @@ class ManagedRepositoryTest {
     try (Git source = source()) {
       var repo =
           new ManagedRepository(
-              new LauncherSettings(
+              new LauncherSettings.RepositoryLocation(
                   source.getRepository().getWorkTree().toString(),
                   "main",
                   temp.resolve("checkout")));

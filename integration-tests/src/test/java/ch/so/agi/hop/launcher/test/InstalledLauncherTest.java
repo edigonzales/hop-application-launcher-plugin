@@ -133,6 +133,7 @@ class InstalledLauncherTest {
       click(content, "Start");
       assertFalse(findButton(content, "Refresh").getEnabled());
       assertFalse(findApps(content).getEnabled());
+      assertFalse(marked(content, "launcher.repositories").getEnabled());
       click(content, "Cancel");
       waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
       assertTrue(
@@ -140,6 +141,7 @@ class InstalledLauncherTest {
           "Cancellation must be recorded");
       verifyLogAndOutputControls(display, perspective, content);
       verifyTreeAndRefresh(display, content);
+      verifyRepositories(display, content);
       // Closing the view during execution cancels, but keeps logs until persistence finishes.
       selectApp(content, "demo.delay");
       fill(content, "INPUT_XML", input.toString());
@@ -298,9 +300,14 @@ class InstalledLauncherTest {
 
   private Object controller(Path source, Path checkout) throws Exception {
     Class<?> s = loader.loadClass("ch.so.agi.hop.launcher.LauncherSettings");
+    Object entry =
+        loader
+            .loadClass("ch.so.agi.hop.launcher.LauncherSettings$RepositoryEntry")
+            .getConstructor(String.class, String.class, String.class, String.class)
+            .newInstance("test", "Test", source.toString(), "main");
     Object settings =
-        s.getConstructor(String.class, String.class, Path.class)
-            .newInstance(source.toString(), "main", checkout);
+        s.getConstructor(List.class, Path.class, String.class)
+            .newInstance(List.of(entry), checkout, "test");
     return loader
         .loadClass("ch.so.agi.hop.launcher.LauncherController")
         .getConstructor(s)
@@ -679,6 +686,217 @@ class InstalledLauncherTest {
     refreshSuccessfully(display, content);
   }
 
+  private void assertStartupRepository(Display display, String expected) throws Exception {
+    HopConfig.getInstance().readFromFile();
+    Shell startup = new Shell(display);
+    startup.setLayout(new FormLayout());
+    try {
+      var perspective =
+          (IHopPerspective)
+              loader
+                  .loadClass("ch.so.agi.hop.launcher.LauncherPerspective")
+                  .getConstructor()
+                  .newInstance();
+      perspective.initialize(null, startup);
+      assertEquals(
+          expected,
+          ((Combo) marked((Composite) perspective.getControl(), "launcher.repositories"))
+              .getText());
+    } finally {
+      startup.dispose();
+    }
+  }
+
+  private Shell openSettings(Composite content) {
+    click(content, "Settings");
+    return Arrays.stream(content.getDisplay().getShells())
+        .filter(s -> Boolean.TRUE.equals(s.getData("launcher.settings")))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  private static Text setting(Composite dialog, String key) {
+    return (Text)
+        controls(dialog).stream()
+            .filter(c -> key.equals(c.getData("launcher.setting")))
+            .findFirst()
+            .orElseThrow();
+  }
+
+  private void chooseRepository(Display display, Composite content, int index) throws Exception {
+    Combo combo = (Combo) marked(content, "launcher.repositories");
+    var entries = (List<?>) HopConfig.readOption("applicationLauncher.repositories");
+    var entry = (Map<?, ?>) entries.get(index);
+    combo.select(combo.indexOf(entry.get("name") + " (" + entry.get("branch") + ")"));
+    combo.notifyListeners(SWT.Selection, new Event());
+    assertUpdating(content, "Applications are being updated …");
+    assertFalse(combo.getEnabled());
+    assertEquals("", ((Label) marked(content, "launcher.revision")).getText());
+    assertEquals(0, findApps(content).getItemCount());
+    assertTrue(logText(content).getText().isBlank());
+    awaitRefresh(display, content);
+  }
+
+  private void verifyRepositories(Display display, Composite content) throws Exception {
+    Combo combo = (Combo) marked(content, "launcher.repositories");
+    assertEquals(1, combo.getItemCount());
+    Object originalEntries = HopConfig.readOption("applicationLauncher.repositories");
+    String originalActive =
+        HopConfig.readOptionString("applicationLauncher.defaultRepositoryId", "");
+    Path base = Path.of(HopConfig.readOptionString("applicationLauncher.checkoutBase", ""));
+    assertEquals(checkout.resolveSibling("checkout-repositories"), base);
+    assertFalse(Files.exists(checkout), "Migration must not create or alter the legacy checkout");
+
+    Shell dialog = openSettings(content);
+    setting(dialog, "RepositoryName").setText("Discarded rename");
+    click(dialog, "AddRepository");
+    click(dialog, "Close");
+    assertEquals(originalEntries, HopConfig.readOption("applicationLauncher.repositories"));
+    assertEquals(1, combo.getItemCount());
+
+    Path second = source.resolveSibling("second-source");
+    copyTree(Path.of(System.getProperty("launcher.examples")), second);
+    Path sidecar = second.resolve("demo/hello-world.launcher.yaml");
+    Files.writeString(
+        sidecar,
+        Files.readString(sidecar).replace("title: Hello World", "title: Second repository"));
+    git(second, "init", "-b", "release");
+    commit(second);
+    dialog = openSettings(content);
+    click(dialog, "AddRepository");
+    assertEquals("main", setting(dialog, "Branch").getText());
+    click(dialog, "Save");
+    assertFalse(dialog.isDisposed());
+    assertFalse(((Label) marked(dialog, "launcher.settingsError")).getText().isBlank());
+    setting(dialog, "RepositoryName").setText("Second");
+    setting(dialog, "Repository").setText(second.toString());
+    setting(dialog, "Branch").setText("release");
+    screenshot(dialog, "launcher-repository-settings.png");
+    click(dialog, "Save");
+    assertTrue(dialog.isDisposed());
+    awaitRefresh(display, content);
+    assertEquals(2, combo.getItemCount());
+    assertArrayEquals(new String[] {"Second (release)", "source (main)"}, combo.getItems());
+    String firstRevision = ((Label) marked(content, "launcher.revision")).getText();
+    selectApp(content, "demo.hello-world");
+    fill(content, "INPUT_XML", "MUST_NOT_SURVIVE_REPOSITORY_SWITCH");
+    chooseRepository(display, content, 1);
+    assertEquals("demo.hello-world", selectedId(content));
+    assertTrue(
+        controls(content).stream()
+            .anyMatch(c -> c instanceof Label l && l.getText().startsWith("Second repository\n")));
+    assertTrue(
+        controls(content).stream()
+            .noneMatch(c -> c instanceof Text t && t.getText().contains("MUST_NOT_SURVIVE")));
+    String secondRevision = ((Label) marked(content, "launcher.revision")).getText();
+    assertNotEquals(firstRevision, secondRevision);
+    String secondId =
+        (String)
+            ((Map<?, ?>)
+                    ((List<?>) HopConfig.readOption("applicationLauncher.repositories")).get(1))
+                .get("id");
+    assertEquals(
+        originalActive, HopConfig.readOptionString("applicationLauncher.defaultRepositoryId", ""));
+    HopConfig.getInstance().readFromFile(); // Exercise the on-disk format used on the next startup.
+    Object reloaded =
+        loader.loadClass("ch.so.agi.hop.launcher.LauncherSettings").getMethod("load").invoke(null);
+    assertEquals(originalActive, call(reloaded, "activeRepositoryId"));
+    assertStartupRepository(display, "source (main)");
+    reloaded = call(reloaded, "select", new Class<?>[] {String.class}, secondId);
+    Path secondCheckout = (Path) call(call(reloaded, "activeLocation"), "checkout");
+    assertEquals("release", git(secondCheckout, "branch", "--show-current").trim());
+    fill(content, "INPUT_XML", input.toString());
+    fill(content, "OUTPUT_DIR", output.toString());
+    click(content, "Start");
+    assertFalse(combo.getEnabled());
+    waitUi(display, () -> findButton(content, "Start").getEnabled(), Duration.ofSeconds(30));
+    assertCsv(output, input);
+    screenshot(content.getShell(), "launcher-multiple-repositories.png");
+
+    // Closing a draft default selection does not change startup behavior.
+    dialog = openSettings(content);
+    Combo defaultChoice = (Combo) marked(dialog, "launcher.defaultRepository");
+    defaultChoice.select(defaultChoice.indexOf("Second (release)"));
+    defaultChoice.notifyListeners(SWT.Selection, new Event());
+    click(dialog, "Close");
+    assertStartupRepository(display, "source (main)");
+
+    // Renaming keeps the same checkout; explicitly choose this repository as the startup default.
+    dialog = openSettings(content);
+    Table table = (Table) marked(dialog, "launcher.repositoryList");
+    table.setSelection(1);
+    table.notifyListeners(SWT.Selection, new Event());
+    setting(dialog, "RepositoryName").setText("Renamed second");
+    defaultChoice = (Combo) marked(dialog, "launcher.defaultRepository");
+    defaultChoice.select(defaultChoice.indexOf("Renamed second (release)"));
+    defaultChoice.notifyListeners(SWT.Selection, new Event());
+    screenshot(dialog, "launcher-default-repository-settings.png");
+    click(dialog, "Save");
+    awaitRefresh(display, content);
+    assertEquals("Renamed second (release)", combo.getText());
+    reloaded =
+        loader.loadClass("ch.so.agi.hop.launcher.LauncherSettings").getMethod("load").invoke(null);
+    assertEquals(secondCheckout, call(call(reloaded, "activeLocation"), "checkout"));
+    assertEquals(secondId, call(reloaded, "defaultRepositoryId"));
+    assertStartupRepository(display, "Renamed second (release)");
+
+    // Network failure after a switch cannot expose the previous repository's form or revision.
+    chooseRepository(display, content, 0);
+    assertStartupRepository(display, "Renamed second (release)");
+    Path unavailable = second.resolveSibling("second-unavailable");
+    Files.move(second, unavailable);
+    try {
+      chooseRepository(display, content, 1);
+      assertFalse(findButton(content, "Start").getEnabled());
+      assertEquals("", ((Label) marked(content, "launcher.revision")).getText());
+      assertTrue(findButton(content, "Offline").getEnabled());
+      click(content, "Offline");
+      awaitRefresh(display, content);
+      assertTrue(findButton(content, "Start").getEnabled());
+      assertTrue(
+          ((Label) marked(content, "launcher.revision"))
+              .getText()
+              .endsWith(secondRevision.substring(secondRevision.indexOf(':') + 1).trim()));
+    } finally {
+      Files.move(unavailable, second);
+    }
+    dialog = openSettings(content);
+    table = (Table) marked(dialog, "launcher.repositoryList");
+    table.setSelection(1);
+    table.notifyListeners(SWT.Selection, new Event());
+    click(dialog, "RemoveRepository");
+    click(dialog, "Save");
+    awaitRefresh(display, content);
+    assertEquals(1, combo.getItemCount());
+    assertEquals(
+        originalActive, HopConfig.readOptionString("applicationLauncher.defaultRepositoryId", ""));
+    assertTrue(Files.isDirectory(secondCheckout.resolve(".git")));
+    assertStartupRepository(display, "source (main)");
+    dialog = openSettings(content);
+    click(dialog, "RemoveRepository");
+    assertFalse(marked(dialog, "launcher.defaultRepository").getEnabled());
+    click(dialog, "Save");
+    assertEquals(0, combo.getItemCount());
+    assertFalse(combo.getEnabled());
+    for (String action : List.of("Refresh", "Offline", "Start"))
+      assertFalse(findButton(content, action).getEnabled());
+    assertEquals(0, findApps(content).getItemCount());
+    HopConfig.getInstance().readFromFile();
+    reloaded =
+        loader.loadClass("ch.so.agi.hop.launcher.LauncherSettings").getMethod("load").invoke(null);
+    assertEquals(List.of(), call(reloaded, "repositories"));
+    assertTrue(((Label) marked(content, "launcher.status")).getText().contains("No repositories"));
+
+    // Re-add the original source through the UI, leaving later lifecycle tests a runnable catalog.
+    dialog = openSettings(content);
+    click(dialog, "AddRepository");
+    setting(dialog, "RepositoryName").setText("Original");
+    setting(dialog, "Repository").setText(source.toString());
+    click(dialog, "Save");
+    awaitRefresh(display, content);
+    assertTrue(findButton(content, "Start").getEnabled());
+  }
+
   private static StyledText logText(Composite content) {
     return (StyledText)
         controls(content).stream()
@@ -768,7 +986,7 @@ class InstalledLauncherTest {
     }
   }
 
-  private static void git(Path directory, String... args) throws Exception {
+  private static String git(Path directory, String... args) throws Exception {
     List<String> cmd =
         new ArrayList<>(
             List.of(
@@ -784,6 +1002,7 @@ class InstalledLauncherTest {
         new ProcessBuilder(cmd).directory(directory.toFile()).redirectErrorStream(true).start();
     String out = new String(p.getInputStream().readAllBytes());
     assertEquals(0, p.waitFor(), out);
+    return out;
   }
 
   private static void commit(Path directory) throws Exception {

@@ -5,6 +5,7 @@ import java.util.function.BiConsumer;
 import org.apache.hop.ui.core.gui.GuiResource;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Tree;
 import org.eclipse.swt.widgets.TreeItem;
 
@@ -29,6 +30,10 @@ final class ApplicationTree {
             notifySelection(item);
           }
         });
+  }
+
+  Control getControl() {
+    return tree;
   }
 
   void setEnabled(boolean enabled) {

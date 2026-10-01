@@ -40,6 +40,7 @@ Anwendungsblatt, um dessen Formular zu öffnen.
 ----
 Anwendungen
 [Einstellungen] [Aktualisieren] [Lokalen Stand offline verwenden]
+Repository: [ Demo…  v ]
 Stand: 0123456789abcdef...
 +----------------------+-----------------------------------------------+
 | ▾ demo               | Hello World                                   |
@@ -71,8 +72,8 @@ Während der Aktualisierung ist die folgende Zeile direkt unter der Toolbar sich
 `[...]` steht für den beschrifteten Button «Durchsuchen…». Pflichtfelder tragen einen Stern.
 Dateiauswahl und Ordnerauswahl verwenden native
 SWT-Dialoge. Während einer Aktualisierung oder eines Laufs ist die Baumansicht gesperrt.
-Während eines Laufs sind auch Einstellungen und Aktualisierung
-gesperrt. Ein Perspektivenwechsel beendet die Ausführung nicht. «Abbrechen» fordert einen
+Während einer Aktualisierung oder eines Laufs sind auch Einstellungen, Repository-Auswahl
+und Aktualisierung gesperrt. Ein Perspektivenwechsel beendet die Ausführung nicht. «Abbrechen» fordert einen
 kontrollierten Stopp an und wartet auf die Engine; bereits erzeugte Dateien werden nicht zurückgerollt.
 
 Nach einem Netzwerkfehler ist «Lokalen Stand offline verwenden» verfügbar, wenn sich ein
@@ -105,24 +106,68 @@ Ziel nicht. Anwendungswechsel, Aktualisierung und ein neuer Lauf setzen das Ziel
 
 === Einstellungen
 
-«Einstellungen» öffnet diesen Dialog. «Speichern» übernimmt die Werte und aktualisiert
-den Katalog; «Schliessen» verwirft Änderungen.
+«Einstellungen» verwaltet eine Liste mit Name, Repository-URL und Branch. Wählen Sie eine
+Zeile und bearbeiten Sie ihre Werte in den Feldern darunter. «Hinzufügen» erstellt einen
+Eintrag mit Branch `main`; «Entfernen» entfernt den markierten Eintrag aus der Liste.
+Über «Standard-Repository beim GUI-Start» wählen Sie das Repository, das beim Öffnen des GUI
+vorausgewählt wird. Der Checkout-Basisordner wird einmal für alle Repositories festgelegt.
+«Speichern» übernimmt die gesamte Liste und aktualisiert das aktive Repository;
+«Schliessen» verwirft alle Änderungen. Name, URL und ein gültiger Branch sind erforderlich.
+Dieselbe URL/Branch-Kombination darf nur einmal eingetragen werden.
 
 [.gui-mockup]
 ----
 Einstellungen
-Repository-URL                   [ https://example.org/team/jobs.git ]
-Branch                           [ main                              ]
-Verwaltetes Checkout-Verzeichnis [ /home/user/.hop/checkout          ]
++----------------------+-------------------------------------+-----------+
+| Name                 | Repository-URL                      | Branch    |
+| Beispiel             | https://example.org/team/jobs.git   | main      |
+| Weitere Anwendungen  | https://example.org/team/apps.git   | release   |
++----------------------+-------------------------------------+-----------+
+[Hinzufügen] [Entfernen]
+Name                               [ Beispiel                            ]
+Repository-URL                     [ https://example.org/team/jobs.git   ]
+Branch                             [ main                                ]
+Standard-Repository beim GUI-Start [ Beispiel (main)                  v  ]
+Checkout-Basisordner               [ /home/user/.hop/repositories        ]
 [Speichern] [Schliessen]
 ----
 
-Standard ist `https://github.com/sogis/datenportal-themenrepo.git`, Branch `main`, mit einem
-eigenen Checkout im Home-Verzeichnis des Benutzers unter `~/.hop/checkout`.
-Bereits gespeicherte Checkout-Pfade werden weiterhin verwendet.
-Die Einstellungen liegen als `applicationLauncher.repository`, `.branch` und `.checkout`
-in der Hop-Konfiguration. Zugangsdialoge, private Repository-Authentisierung und SSH werden
-in dieser Version nicht angeboten. Unterstützt werden öffentliche HTTPS-URLs, absolute lokale
+Oberhalb der Standanzeige wählen Sie das aktive Repository über «Name (Branch)» aus.
+Label und Auswahlfeld schliessen gemeinsam bündig mit dem Anwendungsbaum ab; ihre Breite
+folgt der Fenstergrösse und dem Trennbalken. Lange Namen werden im Auswahlfeld gekürzt.
+Die Liste ist alphabetisch nach Namen sortiert, ohne Unterscheidung der Gross-/Kleinschreibung.
+Beim GUI-Start ist immer das in den Einstellungen gewählte Standard-Repository aktiv.
+Ein Wechsel während der Sitzung verändert den Standard nicht. Wird das Standard-Repository
+entfernt, wird das alphabetisch erste verbleibende zum neuen Standard.
+Beim Wechsel werden Anwendungsbaum,
+Formular, Standanzeige und Laufanzeige zurückgesetzt; danach wird das gewählte Repository
+aktualisiert. Anwendungen verschiedener Repositories dürfen dieselbe ID besitzen.
+Bei einer leeren Repository-Liste bleiben Aktualisierung, Offline-Nutzung und Start deaktiviert;
+fügen Sie über die Einstellungen wieder ein Repository hinzu.
+
+Bei einer Neuinstallation enthält die Liste ausschliesslich «Datenportal Themenrepo» mit
+`https://github.com/sogis/datenportal-themenrepo.git`, Branch `main`.
+Der Standard-Basisordner ist `~/.hop/repositories`. Jedes Repository erhält darin einen eigenen
+Unterordner aus seiner stabilen ID und einem Hash von URL und Branch. Eine Umbenennung behält
+den Checkout; Änderungen von URL oder Branch erzeugen einen anderen Checkout.
+Entfernen löscht ausschliesslich den Konfigurationseintrag, keine lokalen Dateien.
+Nach einem Netzwerkfehler kann der vorhandene lokale Stand des gewählten Repositories
+explizit offline geladen werden. Andere Repositories werden dabei nicht aktualisiert.
+
+Beim Update einer bestehenden Installation werden die bisherige URL und der Branch einmalig
+übernommen. Für einen bisherigen Checkout `/pfad/checkout` wird der neue Basisordner
+`/pfad/checkout-repositories` verwendet. Der alte Checkout bleibt unangetastet; das erste
+Aktualisieren klont neu und benötigt Zugriff auf das Repository. Vorher ist dort noch kein
+Offline-Checkout verfügbar.
+
+Die Einstellungen liegen als `applicationLauncher.repositories`, `.checkoutBase` und
+`.defaultRepositoryId` in der Hop-Konfiguration. Die aktive Auswahl gilt nur für die laufende Sitzung.
+Bei bestehenden Mehrfach-Repository-Einstellungen wird die bisherige `.activeRepositoryId`
+einmalig als Standard übernommen; danach hat diese alte Option keine Wirkung mehr. Die Repository-Liste speichert pro Eintrag
+`id`, `name`, `repository` und `branch`. Nach der Migration werden die alten Optionen
+`.repository`, `.branch` und `.checkout` nicht mehr gelesen; auch eine bewusst leere Liste
+bleibt leer. Zugangsdialoge, private Repository-Authentisierung und SSH werden in dieser
+Version nicht angeboten. Unterstützt werden öffentliche HTTPS-URLs, absolute lokale
 Git-Pfade und `file:`-URLs. Die Anwendung benötigt keine Git-CLI.
 
 == Anwendungskonfiguration

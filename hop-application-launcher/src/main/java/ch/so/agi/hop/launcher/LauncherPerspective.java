@@ -36,6 +36,7 @@ public final class LauncherPerspective implements IHopPerspective {
   private Label updateMessage;
   private ProgressBar updateProgress;
   private Label description, status, revision;
+  private Combo repositorySelection;
   private LauncherLogPanel log;
   private SashForm vertical;
   private Link logFile;
@@ -45,6 +46,8 @@ public final class LauncherPerspective implements IHopPerspective {
   private java.util.List<ApplicationDefinition> definitions = java.util.List.of();
   private ApplicationDefinition selected;
   private LauncherSettings settings;
+  private java.util.List<LauncherSettings.RepositoryEntry> displayedRepositories =
+      java.util.List.of();
   private LauncherController controller;
   private boolean opened, busy;
   private String output = "";
@@ -98,7 +101,7 @@ public final class LauncherPerspective implements IHopPerspective {
     hopGui = gui;
     display = parent.getDisplay();
     settings = LauncherSettings.load();
-    controller = new LauncherController(settings);
+    controller = settings.activeRepository() == null ? null : new LauncherController(settings);
     control = new Composite(parent, SWT.NONE);
     control.setLayout(new GridLayout(1, false));
     FormData fd = new FormData();
@@ -128,7 +131,44 @@ public final class LauncherPerspective implements IHopPerspective {
     updateMessage = new Label(updateBanner, SWT.WRAP);
     updateMessage.setData("launcher.updateMessage", true);
     updateMessage.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+    // Reserve the row's height without letting a long repository name widen the perspective.
+    Composite repositoryArea = new Composite(control, SWT.NONE);
+    repositoryArea.setLayout(new FormLayout());
+    GridData repositoryAreaData = new GridData(SWT.FILL, SWT.CENTER, true, false);
+    repositoryAreaData.widthHint = 0;
+    repositoryArea.setLayoutData(repositoryAreaData);
+    Composite repositoryRow = new Composite(repositoryArea, SWT.NONE);
+    GridLayout repositoryLayout = new GridLayout(2, false);
+    repositoryLayout.marginWidth = 0;
+    repositoryLayout.marginHeight = 0;
+    repositoryRow.setLayout(repositoryLayout);
+    FormData repositoryBounds = new FormData();
+    repositoryBounds.left = new FormAttachment(0);
+    repositoryBounds.top = new FormAttachment(0);
+    repositoryBounds.width = 0;
+    repositoryRow.setLayoutData(repositoryBounds);
+    new Label(repositoryRow, SWT.NONE).setText(message("RepositorySelection"));
+    repositorySelection = new Combo(repositoryRow, SWT.DROP_DOWN | SWT.READ_ONLY);
+    repositorySelection.setData("launcher.repositories", true);
+    GridData repositorySelectionData = new GridData(SWT.FILL, SWT.CENTER, true, false);
+    repositorySelectionData.widthHint = 0;
+    repositorySelection.setLayoutData(repositorySelectionData);
+    repositorySelection.addListener(
+        SWT.Selection,
+        e -> {
+          int index = repositorySelection.getSelectionIndex();
+          if (busy || index < 0) return;
+          var replacement = settings.select(displayedRepositories.get(index).id());
+          if (replacement.equals(settings)) return;
+          try {
+            applySettings(replacement);
+          } catch (Exception ex) {
+            populateRepositories();
+            showError(ex);
+          }
+        });
     revision = new Label(control, SWT.WRAP);
+    revision.setData("launcher.revision", true);
     revision.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
     vertical = new SashForm(control, SWT.VERTICAL);
     vertical.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
@@ -137,6 +177,19 @@ public final class LauncherPerspective implements IHopPerspective {
     SashForm panels = new SashForm(applicationArea, SWT.HORIZONTAL);
     panels.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
     apps = new ApplicationTree(panels, this::selectApplication);
+    Control tree = apps.getControl();
+    Listener alignRepository =
+        e -> {
+          if (tree.isDisposed() || repositoryArea.isDisposed()) return;
+          var bounds = display.map(tree.getParent(), repositoryArea, tree.getBounds());
+          repositoryBounds.left = new FormAttachment(0, bounds.x);
+          repositoryBounds.width = bounds.width;
+          // Only lay out this row: the tree and its sash must retain their own sizing.
+          repositoryArea.layout(true, true);
+        };
+    tree.addListener(SWT.Resize, alignRepository);
+    tree.addListener(SWT.Move, alignRepository);
+    repositoryArea.addListener(SWT.Resize, alignRepository);
     Composite detail = new Composite(panels, SWT.NONE);
     detail.setLayout(new GridLayout(1, false));
     description = new Label(detail, SWT.WRAP);
@@ -188,10 +241,12 @@ public final class LauncherPerspective implements IHopPerspective {
     vertical.setWeights(65, 35);
     vertical.setMaximizedControl(applicationArea);
     selectApplication(null, "");
+    populateRepositories();
+    busy(false, false);
     control.addListener(
         SWT.Dispose,
         e -> {
-          controller.cancel();
+          if (controller != null) controller.cancel();
           worker.shutdown();
         });
   }
@@ -222,7 +277,8 @@ public final class LauncherPerspective implements IHopPerspective {
     apps.setEnabled(!value);
     form.setEnabled(!value);
     settingsButton.setEnabled(!value);
-    refresh.setEnabled(!value);
+    refresh.setEnabled(!value && controller != null);
+    repositorySelection.setEnabled(!value && controller != null);
     offline.setEnabled(false);
     start.setEnabled(!value && selected != null);
     cancel.setEnabled(running);
@@ -232,6 +288,13 @@ public final class LauncherPerspective implements IHopPerspective {
 
   private void refresh(boolean useOffline) {
     if (busy) return;
+    if (controller == null) {
+      busy(false, false);
+      status.setText(message("NoRepositories"));
+      control.layout(true, true);
+      return;
+    }
+    final LauncherController target = controller;
     busy(true, false);
     showUpdate(message(useOffline ? "LoadingOffline" : "Updating"), true);
     status.setText(message(useOffline ? "LoadingOffline" : "Updating"));
@@ -245,7 +308,7 @@ public final class LauncherPerspective implements IHopPerspective {
     worker.submit(
         () -> {
           try {
-            var catalog = useOffline ? controller.useOffline() : controller.refresh();
+            var catalog = useOffline ? target.useOffline() : target.refresh();
             ui(
                 () -> {
                   definitions = catalog.applications();
@@ -359,7 +422,8 @@ public final class LauncherPerspective implements IHopPerspective {
     String id = selected.id();
     Map<String, String> values = new LinkedHashMap<>();
     fields.forEach((name, value) -> values.put(name, value.get()));
-    log.attach(controller.prepareRun());
+    final LauncherController target = controller;
+    log.attach(target.prepareRun());
     vertical.setMaximizedControl(null);
     busy(true, true);
     status.setText(message("Running"));
@@ -369,8 +433,7 @@ public final class LauncherPerspective implements IHopPerspective {
     worker.submit(
         () -> {
           try {
-            var result =
-                controller.run(id, values, LauncherSettings.stateDirectory().resolve("runs"));
+            var result = target.run(id, values, LauncherSettings.stateDirectory().resolve("runs"));
             ui(
                 () -> {
                   output = result.outputDirectory();
@@ -398,50 +461,41 @@ public final class LauncherPerspective implements IHopPerspective {
     log.error(e);
   }
 
-  private void settingsDialog() {
-    Shell dialog =
-        new Shell(control.getShell(), SWT.DIALOG_TRIM | SWT.APPLICATION_MODAL | SWT.RESIZE);
-    dialog.setText(message("Settings"));
-    dialog.setLayout(new GridLayout(2, false));
-    Text repository = setting(dialog, "Repository", settings.repository());
-    Text branch = setting(dialog, "Branch", settings.branch());
-    Text checkout = setting(dialog, "Checkout", settings.checkout().toString());
-    button(
-        dialog,
-        "Save",
-        () -> {
-          try {
-            var replacement =
-                new LauncherSettings(
-                    repository.getText().trim(),
-                    branch.getText().trim(),
-                    java.nio.file.Path.of(checkout.getText().trim()).toAbsolutePath());
-            if (replacement.repository().isEmpty()
-                || replacement.branch().isEmpty()
-                || checkout.getText().isBlank())
-              throw new IllegalArgumentException(message("SettingsRequired"));
-            replacement.save();
-            if (!replacement.equals(settings)) apps.reset();
-            settings = replacement;
-            controller = new LauncherController(settings);
-            dialog.dispose();
-            refresh(false);
-          } catch (Exception | LinkageError e) {
-            showError(e);
-          }
-        });
-    button(dialog, "Close", dialog::dispose);
-    dialog.pack();
-    dialog.setSize(Math.max(650, dialog.getSize().x), dialog.getSize().y);
-    dialog.open();
+  private void populateRepositories() {
+    displayedRepositories = LauncherSettings.sortedRepositories(settings.repositories());
+    repositorySelection.setItems(
+        displayedRepositories.stream()
+            .map(LauncherSettings.RepositoryEntry::label)
+            .toArray(String[]::new));
+    var active = settings.activeRepository();
+    if (active != null) repositorySelection.select(displayedRepositories.indexOf(active));
+    repositorySelection.setToolTipText(active == null ? null : active.repository());
   }
 
-  private Text setting(Composite parent, String key, String value) {
-    Label label = new Label(parent, SWT.NONE);
-    label.setText(message(key));
-    Text field = new Text(parent, SWT.BORDER);
-    field.setText(value);
-    field.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-    return field;
+  private void applySettings(LauncherSettings replacement) {
+    boolean changed = !replacement.equals(settings);
+    settings = replacement;
+    controller = settings.activeRepository() == null ? null : new LauncherController(settings);
+    populateRepositories();
+    if (changed) apps.reset();
+    definitions = java.util.List.of();
+    revision.setText("");
+    log.attach(null);
+    savedLog = "";
+    logFile.setText("");
+    logFile.setToolTipText(null);
+    showUpdate("", false);
+    refresh(false);
+  }
+
+  private void settingsDialog() {
+    new LauncherSettingsDialog(
+            control.getShell(),
+            settings,
+            replacement -> {
+              replacement.save();
+              applySettings(replacement);
+            })
+        .open();
   }
 }

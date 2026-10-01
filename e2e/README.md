@@ -48,3 +48,12 @@ The collapsed-selection regression also emulates GTK moving its native highlight
 without a user selection event. Refresh must retain the previously selected application and its
 form, and late selection events from disposed items must be ignored. Explicitly selecting an
 organization still clears the form and disables Start.
+
+Repository checks cover migration of legacy settings, adding/editing/removing entries,
+discarding drafts, invalid settings, alphabetical selection, a configurable startup default and an empty list.
+Reopening the perspective uses the saved default even after switching repositories during the session;
+removing the default selects the first remaining repository. Two repositories
+with different branches and identical application IDs verify independent forms, revisions,
+execution and offline use. Renaming preserves the checkout, removing an entry preserves its
+files, and repository selection is disabled during updates and runs. Screenshots include the
+repository settings dialog and the main view with the selector.

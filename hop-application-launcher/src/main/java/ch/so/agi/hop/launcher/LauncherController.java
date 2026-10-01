@@ -8,12 +8,12 @@ public final class LauncherController {
   public record Catalog(
       String revision, List<ApplicationDefinition> applications, boolean offline) {}
 
-  private final LauncherSettings settings;
+  private final LauncherSettings.RepositoryLocation settings;
   private String validatedRevision;
   private volatile ExecutionService execution;
 
   public LauncherController(LauncherSettings settings) {
-    this.settings = settings;
+    this.settings = settings.activeLocation();
   }
 
   public Catalog refresh() throws Exception {

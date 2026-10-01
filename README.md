@@ -6,7 +6,8 @@ A generic Apache Hop desktop perspective for running Git-managed applications wi
 
 - Curated application tree for `.hpl` pipelines and `.hwf` workflows, grouped by organization.
 - File, directory, string, choice and boolean fields; German and English UI.
-- Managed Git checkout, background update status, fast-forward updates and explicit offline operation.
+- Multiple named repositories with individual branches, a shared checkout base directory and a repository selector.
+- Independent managed checkouts, background update status, fast-forward updates and explicit offline operation.
 - Local execution, cancellation and revision-linked run reports.
 - Native Hop live logs with filtering and a contextual output-directory action.
 
@@ -20,7 +21,10 @@ repository paths/file URIs are supported; no Git CLI is required for the launche
 
 Unzip `hop-application-launcher-plugin-0.1.0-SNAPSHOT.zip` into the Hop installation directory and restart Hop.
 The ZIP installs under `plugins/misc/hop-application-launcher`. Open **Applications / Anwendungen** in the
-perspective selector and configure the repository, branch and a dedicated checkout directory in **Settings**.
+perspective selector and manage repositories (name, URL and branch) and a global checkout base directory in **Settings**.
+Select the active repository from the alphabetical list above the revision display. Settings provides
+a default repository for GUI startup; switching repositories during a session does not change it.
+Each repository has its own local checkout.
 The default repository is `sogis/datenportal-themenrepo`, branch `main`.
 
 ## Documentation
