@@ -16,6 +16,7 @@ import org.apache.hop.core.config.HopConfig;
 import org.apache.hop.core.gui.plugin.GuiPluginType;
 import org.apache.hop.core.logging.*;
 import org.apache.hop.core.plugins.PluginRegistry;
+import org.apache.hop.ui.core.gui.GuiResource;
 import org.apache.hop.ui.hopgui.HopGuiEnvironment;
 import org.apache.hop.ui.hopgui.perspective.*;
 import org.eclipse.swt.SWT;
@@ -421,9 +422,23 @@ class InstalledLauncherTest {
     click(content, "MatchCaseLog");
     assertTrue(logText(content).getText().contains("AFTER_PAUSE_SENTINEL"));
     filter.setText("");
+    Font baseFont = logText(content).getFont();
+    Font systemFont = display.getSystemFont();
+    Font defaultFont = GuiResource.getInstance().getFontDefault();
+    int baseHeight = baseFont.getFontData()[0].getHeight();
     click(content, "LargerLog");
+    Font largerFont = logText(content).getFont();
+    assertEquals(baseHeight + 1, largerFont.getFontData()[0].getHeight());
+    assertFalse(systemFont.isDisposed(), "Zoom must preserve the display's shared font");
+    assertFalse(defaultFont.isDisposed(), "Zoom must preserve Hop's shared default font");
     click(content, "SmallerLog");
+    Font smallerFont = logText(content).getFont();
+    assertEquals(baseHeight, smallerFont.getFontData()[0].getHeight());
+    assertTrue(largerFont.isDisposed(), "Replaced zoom fonts must be released");
     click(content, "ResetLogFont");
+    assertSame(baseFont, logText(content).getFont());
+    assertTrue(smallerFont.isDisposed(), "Reset must release the zoom font");
+    assertFalse(baseFont.isDisposed(), "Reset must preserve Hop's shared fixed font");
     click(content, "ClearLog");
     assertTrue(logText(content).getText().isBlank());
     runChannel.logError("AFTER_CLEAR_ERROR");
@@ -690,6 +705,8 @@ class InstalledLauncherTest {
     HopConfig.getInstance().readFromFile();
     Shell startup = new Shell(display);
     startup.setLayout(new FormLayout());
+    Font baseFont = GuiResource.getInstance().getFontFixed();
+    Font zoomFont = null;
     try {
       var perspective =
           (IHopPerspective)
@@ -702,9 +719,16 @@ class InstalledLauncherTest {
           expected,
           ((Combo) marked((Composite) perspective.getControl(), "launcher.repositories"))
               .getText());
+      Composite content = (Composite) perspective.getControl();
+      click(content, "LargerLog");
+      zoomFont = logText(content).getFont();
     } finally {
       startup.dispose();
     }
+    assertFalse(baseFont.isDisposed(), "Closing a view must preserve Hop's shared fixed font");
+    assertTrue(zoomFont.isDisposed(), "Closing a view must release its zoom font");
+    assertFalse(display.getSystemFont().isDisposed());
+    assertFalse(GuiResource.getInstance().getFontDefault().isDisposed());
   }
 
   private Shell openSettings(Composite content) {

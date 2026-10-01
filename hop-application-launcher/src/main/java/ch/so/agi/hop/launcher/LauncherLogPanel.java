@@ -7,10 +7,10 @@ import org.apache.hop.ui.core.PropsUi;
 import org.apache.hop.ui.core.gui.GuiResource;
 import org.apache.hop.ui.core.widget.StyledTextVar;
 import org.apache.hop.ui.hopgui.file.pipeline.HopGuiLogBrowser;
-import org.apache.hop.ui.hopgui.file.shared.TextZoom;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.*;
 import org.eclipse.swt.graphics.Font;
+import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.layout.*;
 import org.eclipse.swt.widgets.*;
 
@@ -22,7 +22,7 @@ final class LauncherLogPanel {
   private final Text filter;
   private final Button highlight, matchCase, exclude;
   private final Font baseFont;
-  private final TextZoom zoom;
+  private Font zoomFont;
   private final HopGuiLogBrowser browser;
   private RunLog session;
 
@@ -69,16 +69,14 @@ final class LauncherLogPanel {
     text.getTextWidget().setData("launcher.log", true);
     PropsUi.setLook(text);
     baseFont = GuiResource.getInstance().getFontFixed();
-    zoom = new TextZoom(text, baseFont);
-    zoom.resetFont();
+    text.setFont(baseFont);
     browser = new HopGuiLogBrowser(text, () -> session);
     browser.installLogSniffer();
     filter.addModifyListener(e -> filterChanged());
     text.addDisposeListener(
         e -> {
           if (session != null) session.release();
-          Font current = text.getFont();
-          if (current != baseFont) current.dispose();
+          if (zoomFont != null) zoomFont.dispose();
         });
   }
 
@@ -145,10 +143,18 @@ final class LauncherLogPanel {
   }
 
   private void changeFont(int direction) {
-    Font old = text.getFont();
-    if (direction > 0) zoom.increaseFont();
-    else if (direction < 0) zoom.decreaseFont();
-    else zoom.resetFont();
-    if (old != baseFont && old != text.getFont()) old.dispose();
+    // StyledTextVar.setFont updates the child, but getFont reads the wrapper's shared font.
+    // Read the rendered font and only dispose fonts allocated by this panel.
+    Font replacement = null;
+    if (direction != 0) {
+      FontData[] data = text.getTextWidget().getFont().getFontData();
+      for (FontData fontData : data) {
+        fontData.setHeight(Math.max(4, fontData.getHeight() + direction));
+      }
+      replacement = new Font(text.getDisplay(), data);
+    }
+    text.setFont(replacement == null ? baseFont : replacement);
+    if (zoomFont != null) zoomFont.dispose();
+    zoomFont = replacement;
   }
 }
