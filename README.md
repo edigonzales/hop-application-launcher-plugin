@@ -41,7 +41,6 @@ Concrete prerequisites and commands are in [AGENTS.md](AGENTS.md). With JDK 21 a
 ```sh
 mvn -s "$MAVEN_SETTINGS" -B -ntp clean verify
 python3 scripts/verify-package.py
-python3 scripts/check-docs.py
 ```
 
 Run installed tests against a disposable Hop distribution with `scripts/run-e2e.py`; see the E2E guide.

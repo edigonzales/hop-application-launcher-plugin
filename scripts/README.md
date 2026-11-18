@@ -8,5 +8,3 @@
 - `prepare-hop.py`: checksum-verified disposable Apache Hop 2.19.0 installation.
 - `run-e2e.py`: installed-plugin checks; never rebuilds the candidate ZIP.
 - `build-docs-site.py`: build the exact checkout or `--revision` using Biblios; optionally `--serve`.
-- `check-docs.py`: validate source documentation and example configuration.
-- `check-docs-site.py`: verify generated GUI classes, stylesheet loading and asset presence.

@@ -31,13 +31,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: edigonzales/hop-plugin-ci
-          ref: main
+          ref: f0a1eec368cb8c5d2592086b26393a6fc3916ad1
           path: .ci/hop-plugin-ci
       - name: Prepare Maven settings
         run: |
           python3 .ci/hop-plugin-ci/scripts/write_maven_settings.py --output "$RUNNER_TEMP/maven-settings.xml"
           echo "MAVEN_SETTINGS=$RUNNER_TEMP/maven-settings.xml" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: hop-application-launcher-plugin-canonical
           path: .ci/canonical
@@ -60,16 +60,10 @@ jobs:
   publish:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: [lint, verify, installed-e2e]
-    uses: edigonzales/hop-plugin-ci/.github/workflows/plugin-publish.yml@main
+    uses: edigonzales/hop-plugin-ci/.github/workflows/publish.yml@f0a1eec368cb8c5d2592086b26393a6fc3916ad1
     with:
-      ci-ref: main
       repository-kind: snapshot
       verified-artifact-name: hop-application-launcher-plugin-canonical
-      pom-file: pom.xml
-      zip-descriptors: >-
-        [{"artifactId":"hop-application-launcher-plugin","zipGlob":"assemblies/target/hop-application-launcher-plugin-*.zip","pluginRoot":"plugins/misc/hop-application-launcher"}]
-      group-id: ch.so.agi
-      hop-version: 2.19.0
     secrets:
       MAVEN_USERNAME: ${{ secrets.INTERLIS_MAVEN_USERNAME }}
       MAVEN_PASSWORD: ${{ secrets.INTERLIS_MAVEN_TOKEN }}
