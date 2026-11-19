@@ -1,7 +1,7 @@
 # Repository instructions
 
 Read the [shared CI contract](https://github.com/edigonzales/hop-plugin-ci/blob/main/docs/ci-contract.md).
-Profile: `desktop-plugin`. Shared workflows and helpers both track `main`.
+Use the shared workflow and helper revision pinned in `.github/workflows/`.
 
 ## Build and tests
 
