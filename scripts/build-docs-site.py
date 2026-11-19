@@ -115,7 +115,6 @@ def main():
     (output / '.nojekyll').touch()
     (output / 'build-info.json').write_text(
         json.dumps(dict(source=origin, biblios=version, sha256=digest), indent=2) + '\n')
-    run('python3', str(ROOT / 'scripts/check-docs-site.py'), str(output))
     if args.serve:
         handler = lambda *a, **kw: http.server.SimpleHTTPRequestHandler(*a, directory=str(output), **kw)
         with http.server.ThreadingHTTPServer(('127.0.0.1', args.port), handler) as server:

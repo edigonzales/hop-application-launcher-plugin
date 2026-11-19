@@ -291,16 +291,13 @@ Lauf zusammen. `ExecutionService` führt Hop im eigenen `HopRuntimeContext` aus.
 `RunLog` hält den stabilen Elternkanal eines Laufs; `LauncherLogPanel` bindet Hops native
 Loganzeige daran. `LauncherPerspective` beschränkt sich auf SWT-Steuerelemente und asynchrone Bedienung.
 
-Das Maven-Projekt verwendet den gemeinsamen `ch.so.agi:hop-plugin-parent` und das
-`desktop-plugin`-Profil aus `hop-plugin-ci`. Hop/SWT bleiben Host-Abhängigkeiten;
-JGit und SnakeYAML Engine liegen im Plugin-ZIP. Die Dokumentation folgt dem
-https://github.com/edigonzales/hop-plugin-ci/blob/main/docs/plugin-repository-contract.md[Repository-Vertrag].
+Das Maven-Projekt verwendet den gemeinsamen `ch.so.agi:hop-plugin-parent`.
+Hop/SWT sind Host-Abhängigkeiten. JGit und SnakeYAML Engine liegen im Plugin-ZIP.
 
 [source,shell]
 ----
 mvn -s "$MAVEN_SETTINGS" -B -ntp clean verify
 python3 scripts/verify-package.py
-python3 scripts/check-docs.py
 python3 scripts/build-docs-site.py
 ----
 

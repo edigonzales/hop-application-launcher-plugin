@@ -41,7 +41,6 @@ Concrete prerequisites and commands are in [AGENTS.md](AGENTS.md). With JDK 21 a
 ```sh
 mvn -s "$MAVEN_SETTINGS" -B -ntp clean verify
 python3 scripts/verify-package.py
-python3 scripts/check-docs.py
 ```
 
 Run installed tests against a disposable Hop distribution with `scripts/run-e2e.py`; see the E2E guide.
@@ -71,8 +70,8 @@ using the sibling `../hop-plugin-ci` checkout; set `HOP_CI_DIR` to use another c
 
 ## CI and publication
 
-Uses [hop-plugin-ci](https://github.com/edigonzales/hop-plugin-ci) with the `desktop-plugin` repository profile.
-Workflow and helper references both track `main`. Java 21/25 are tested on Linux, macOS and Windows;
+The [GitHub workflows](.github/workflows/) pin the shared CI workflows and helpers to a commit.
+Java 21/25 are tested on Linux, macOS and Windows;
 Ubuntu/Java 21 produces the canonical ZIP. Installed E2E consumes that exact artifact. Main-branch snapshot
 publication to jars.interlis.guru depends on both verification and E2E. Pull requests never publish.
 Biblios validates PR documentation and publishes GitHub Pages only from `main`.
